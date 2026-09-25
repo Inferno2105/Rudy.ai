@@ -210,6 +210,20 @@ def cmd_runs(args: argparse.Namespace) -> int:
         prov = manifest.get("provenance", {})
         print(f"commit      {(prov.get('git') or {}).get('commit')}")
         print(f"config_hash {prov.get('config_hash')}")
+
+        stages = manifest.get("stages", [])
+        if stages:
+            print("\nstages:")
+            for stage in stages:
+                marker = {"ok": "[ ok ]", "failed": "[FAIL]", "skipped": "[skip]"}.get(
+                    stage.get("status"), "[ ?? ]"
+                )
+                print(f"  {marker} {stage['name']:<16} {stage.get('seconds', 0):>6.1f}s", end="")
+                if stage.get("error"):
+                    print(f"  -- {stage['error'][:80]}")
+                else:
+                    print()
+
         print("\nartifacts present:")
         for name in run.existing_artifacts():
             print(f"  {name}")
@@ -228,6 +242,49 @@ def cmd_runs(args: argparse.Namespace) -> int:
             except Exception:
                 status = "unreadable"
         print(f"{run.run_id:<44} {status:<10} {len(run.existing_artifacts())}/10")
+    return 0
+
+
+def cmd_batch(args: argparse.Namespace) -> int:
+    """Run (or resume) the batch pipeline over one audio file."""
+    from meeting_assistant.errors import MeetingAssistantError
+    from meeting_assistant.pipeline.batch import BatchOptions, run_batch
+
+    opts = BatchOptions(
+        num_speakers=args.num_speakers,
+        resume_run_id=args.resume,
+        force_stage=args.force,
+        only_stage=args.only,
+        skip_stages=tuple(args.skip or ()),
+    )
+
+    try:
+        paths = run_batch(args.audio, opts)
+    except MeetingAssistantError as exc:
+        print(f"Batch run failed: {exc}", file=sys.stderr)
+        return 1
+
+    from meeting_assistant.io_utils import read_json
+
+    manifest = read_json(paths.manifest_path)
+    status = manifest.get("status")
+    print(f"\nRun {paths.run_id}: {status}")
+    print(f"  {paths.root}")
+
+    return 0 if status == "completed" else 1
+
+
+def cmd_reindex(args: argparse.Namespace) -> int:  # noqa: ARG001 -- argparse namespace, currently no flags used
+    """Rebuild the SQLite index from every run directory on disk."""
+    from meeting_assistant import paths as paths_mod
+    from meeting_assistant.store.db import open_db
+    from meeting_assistant.store.ingest import reindex_all
+
+    runs = paths_mod.list_runs()
+    with open_db() as conn:
+        count = reindex_all(conn, runs)
+
+    print(f"Indexed {count} of {len(runs)} run(s) into {config.INDEX_DB_PATH}")
     return 0
 
 
@@ -253,6 +310,36 @@ def build_parser() -> argparse.ArgumentParser:
     runs = subparsers.add_parser("runs", help="list or inspect previous runs")
     runs.add_argument("--show", metavar="RUN_ID", help="show one run in detail")
     runs.set_defaults(func=cmd_runs)
+
+    batch = subparsers.add_parser("batch", help="run the pipeline over one audio file")
+    batch.add_argument(
+        "audio",
+        nargs="?",
+        help="path to the audio file (omit only when using --resume)",
+    )
+    batch.add_argument(
+        "--num-speakers",
+        type=int,
+        metavar="N",
+        help="true speaker count, if known -- improves diarization accuracy",
+    )
+    batch.add_argument("--resume", metavar="RUN_ID", help="continue a previous run")
+    batch.add_argument(
+        "--force",
+        metavar="STAGE",
+        help="re-run from this stage onward, deleting its artifact and every later one",
+    )
+    batch.add_argument("--only", metavar="STAGE", help="run only this one stage")
+    batch.add_argument(
+        "--skip",
+        action="append",
+        metavar="STAGE",
+        help="exclude a stage from this run (repeatable)",
+    )
+    batch.set_defaults(func=cmd_batch)
+
+    reindex = subparsers.add_parser("reindex", help="rebuild the SQLite index from disk")
+    reindex.set_defaults(func=cmd_reindex)
 
     return parser
 

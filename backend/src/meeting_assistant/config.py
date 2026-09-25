@@ -174,22 +174,28 @@ def output_affecting_settings() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
-def validate_config(
+def list_problems(
     *,
     require_hf_token: bool = True,
     require_ffmpeg: bool = True,
     require_ollama: bool = False,
-) -> None:
-    """Check prerequisites and raise one aggregated error listing every problem.
+) -> list[str]:
+    """Check prerequisites and return every problem found, without raising.
 
-    Aggregating matters: fixing prerequisites one error message at a time, each
-    needing another slow model load to discover the next, is a miserable setup
-    experience. The flags let a caller scope the check to the stages it will
-    actually run, so an ASR-only invocation is not blocked by a missing Ollama
-    server.
+    This is the non-raising half of :func:`validate_config`, split out so a
+    caller can use it for two different purposes with two different failure
+    policies:
 
-    Raises:
-        ConfigError: if anything required is missing.
+    1. A courtesy warning before a multi-stage run starts — reporting what is
+       likely to fail without aborting the stages that do not actually need
+       it. A batch run must not be destroyed by a missing Ollama server just
+       because *some* of its later stages depend on one; the hard,
+       Ollama-independent stages (transcription, alignment) should still run.
+    2. A narrowly-scoped, raising check inside an individual pipeline stage —
+       see :func:`validate_config` — so that stage's own failure is caught and
+       recorded by the orchestrator exactly like any other stage failure,
+       with a message that explains the remediation rather than a raw
+       exception from deep inside a client library.
     """
     problems: list[str] = []
 
@@ -225,6 +231,34 @@ def validate_config(
                 f"server and run `ollama pull {OLLAMA_MODEL}`."
             )
 
+    return problems
+
+
+def validate_config(
+    *,
+    require_hf_token: bool = True,
+    require_ffmpeg: bool = True,
+    require_ollama: bool = False,
+) -> None:
+    """Check prerequisites and raise one aggregated error listing every problem.
+
+    Aggregating matters: fixing prerequisites one error message at a time, each
+    needing another slow model load to discover the next, is a miserable setup
+    experience. The flags scope the check to what the caller is actually about
+    to do — a stage that does not touch Ollama must not be blocked by a
+    missing Ollama server, which is why every pipeline stage that needs a
+    credential or a server calls this scoped to only what *it* needs, rather
+    than the orchestrator validating everything every stage might ever need
+    before the run even starts.
+
+    Raises:
+        ConfigError: if anything required is missing.
+    """
+    problems = list_problems(
+        require_hf_token=require_hf_token,
+        require_ffmpeg=require_ffmpeg,
+        require_ollama=require_ollama,
+    )
     if problems:
         raise ConfigError(
             "Configuration problem(s) found:\n  - " + "\n  - ".join(problems)
