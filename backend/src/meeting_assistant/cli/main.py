@@ -274,6 +274,140 @@ def cmd_batch(args: argparse.Namespace) -> int:
     return 0 if status == "completed" else 1
 
 
+def _load_clip_reference(clip_dir):
+    """Read one clip's reference bundle from ``data/eval/references/<clip_id>/``.
+
+    Every file is optional (see ``docs/evaluation.md`` for the full contract):
+    a clip need only carry references for the metric families it is meant to
+    exercise, and :func:`~meeting_assistant.evaluation.report.generate_clip_report`
+    already skips a family cleanly when either side is missing.
+    """
+    from meeting_assistant.evaluation.report import ClipReference
+    from meeting_assistant.evaluation.rttm import read_rttm
+    from meeting_assistant.io_utils import read_json
+
+    def text(name: str) -> str | None:
+        path = clip_dir / name
+        return path.read_text(encoding="utf-8").strip() if path.exists() else None
+
+    def data(name: str):
+        path = clip_dir / name
+        return read_json(path) if path.exists() else None
+
+    turns = read_rttm(clip_dir / "turns.rttm") if (clip_dir / "turns.rttm").exists() else None
+    meta = data("meta.json") or {}
+
+    return ClipReference(
+        transcript_text=text("transcript.txt"),
+        turns=turns,
+        languages=data("languages.json"),
+        summary=text("summary.txt"),
+        action_items=data("action_items.json"),
+        true_speakers=data("true_speakers.json"),
+        true_speaker_count=meta.get("true_speaker_count"),
+    )
+
+
+def _load_clip_hypothesis(run):
+    """Build a :class:`~meeting_assistant.evaluation.report.ClipHypothesis`
+    from a completed run's artifacts."""
+    from meeting_assistant.errors import ArtifactError
+    from meeting_assistant.evaluation.report import ClipHypothesis
+    from meeting_assistant.io_utils import read_json
+    from meeting_assistant.pipeline.stages import resolve_intel_input
+
+    transcript_text = None
+    languages = None
+    resolved_segments = None
+    try:
+        _, segments = resolve_intel_input(run)
+        transcript_text = " ".join(s.get("text", "") for s in segments)
+        languages = [s.get("language") for s in segments]
+        resolved_segments = segments
+    except ArtifactError:
+        pass
+
+    turns = read_json(run.artifact("diarization")) if run.has("diarization") else None
+    summary = read_json(run.artifact("summary"))["summary"] if run.has("summary") else None
+    action_items = (
+        read_json(run.artifact("action_items"))["action_items"]
+        if run.has("action_items")
+        else None
+    )
+
+    system_metrics = None
+    if run.manifest_path.exists():
+        manifest = read_json(run.manifest_path)
+        transcript_stage = next(
+            (s for s in manifest.get("stages", []) if s["name"] == "transcript"), None
+        )
+        if transcript_stage:
+            system_metrics = {
+                "realtime_factor": transcript_stage.get("counts", {}).get("realtime_factor"),
+                "transcribe_seconds": transcript_stage.get("seconds"),
+            }
+
+    return ClipHypothesis(
+        transcript_text=transcript_text,
+        turns=turns,
+        languages=languages,
+        summary=summary,
+        action_items=action_items,
+        resolved_segments=resolved_segments,
+        system_metrics=system_metrics,
+    )
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    """Score one or more runs against their labelled references and report."""
+    from meeting_assistant import paths as paths_mod
+    from meeting_assistant.evaluation.report import aggregate_reports, generate_clip_report
+    from meeting_assistant.io_utils import read_json, write_json
+
+    references_dir = config.EVAL_DIR / "references"
+    clip_dirs = []
+    if references_dir.is_dir():
+        clip_dirs = sorted(d for d in references_dir.glob("*") if d.is_dir())
+
+    if not clip_dirs:
+        print(f"No labelled clips found under {references_dir}")
+        print("See docs/evaluation.md for the dataset and labelling protocol.")
+        return 1
+
+    runs_by_source = {}
+    for run in paths_mod.list_runs():
+        if not run.manifest_path.exists():
+            continue
+        manifest = read_json(run.manifest_path)
+        input_path = ((manifest.get("provenance") or {}).get("input") or {}).get("name")
+        if input_path:
+            runs_by_source.setdefault(input_path, run)  # newest first: list_runs() is newest-first
+
+    reports = []
+    for clip_dir in clip_dirs:
+        clip_id = clip_dir.name
+        run = runs_by_source.get(f"{clip_id}.wav")
+        if run is None:
+            print(f"  [skip] {clip_id}: no run found for data/audio/{clip_id}.wav")
+            continue
+        hypothesis = _load_clip_hypothesis(run)
+        reference = _load_clip_reference(clip_dir)
+        report = generate_clip_report(clip_id, hypothesis, reference)
+        reports.append(report)
+        print(f"  [ ok ] {clip_id}: scored against run {run.run_id}")
+
+    if not reports:
+        print("\nNo clip had both a labelled reference and a matching run.")
+        return 1
+
+    aggregated = aggregate_reports(reports)
+    output_path = config.EVAL_DIR / "reports" / "latest.json"
+    write_json(output_path, {"clips": reports, "aggregate": aggregated})
+
+    print(f"\nScored {len(reports)}/{len(clip_dirs)} clip(s). Report written to {output_path}")
+    return 0
+
+
 def cmd_live(args: argparse.Namespace) -> int:
     """Record from the microphone and process it incrementally until stopped."""
     from meeting_assistant.errors import MeetingAssistantError
@@ -381,6 +515,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="disable cross-chunk speaker identity resolution",
     )
     live.set_defaults(func=cmd_live)
+
+    eval_parser = subparsers.add_parser(
+        "eval", help="score labelled clips under data/eval/references/ against their runs"
+    )
+    eval_parser.set_defaults(func=cmd_eval)
 
     reindex = subparsers.add_parser("reindex", help="rebuild the SQLite index from disk")
     reindex.set_defaults(func=cmd_reindex)
