@@ -1,0 +1,156 @@
+[
+  {
+    "start": 0.0,
+    "end": 6.4,
+    "speaker": "SPEAKER_00",
+    "text": "Good morning everyone, aaj hum project ke final phase ke baare mein discuss karenge",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 6.4,
+    "end": 11.8,
+    "speaker": "SPEAKER_01",
+    "text": "Haan bilkul, sabse pehle hum backend ka status dekh lete hain",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 11.8,
+    "end": 19.2,
+    "speaker": "SPEAKER_02",
+    "text": "Backend is almost done, database schema is finalized and API endpoints are working",
+    "language": "English"
+  },
+  {
+    "start": 19.2,
+    "end": 27.5,
+    "speaker": "SPEAKER_00",
+    "text": "Accha great, Diya kya tum frontend integration complete kar paogi is week?",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 27.5,
+    "end": 33.0,
+    "speaker": "SPEAKER_01",
+    "text": "Haan main try karungi, but I think mujhe Friday tak time chahiye hoga",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 33.0,
+    "end": 38.6,
+    "speaker": "SPEAKER_00",
+    "text": "Theek hai, so let's finalize Friday as the deadline for frontend integration",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 38.6,
+    "end": 45.9,
+    "speaker": "SPEAKER_02",
+    "text": "Sounds good, in that case main isi hafte diarization module ka testing complete kar dunga",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 45.9,
+    "end": 52.3,
+    "speaker": "SPEAKER_01",
+    "text": "Perfect, aur Rohan, tumhe language detection ke accuracy results bhi share karne honge",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 52.3,
+    "end": 58.0,
+    "speaker": "SPEAKER_02",
+    "text": "Haan main wo report Wednesday tak bana ke bhej dunga sabko",
+    "language": "Hindi"
+  },
+  {
+    "start": 58.0,
+    "end": 65.4,
+    "speaker": "SPEAKER_00",
+    "text": "Great, let's also decide something about the summarization module, kaunsa LLM use karenge",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 65.4,
+    "end": 72.1,
+    "speaker": "SPEAKER_01",
+    "text": "Mera suggestion hai ki hum qwen2.5 use karein, kyunki Hindi output usme better tha",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 72.1,
+    "end": 76.8,
+    "speaker": "SPEAKER_02",
+    "text": "I agree, let's finalize qwen2.5 for both normalization and summarization",
+    "language": "English"
+  },
+  {
+    "start": 76.8,
+    "end": 82.0,
+    "speaker": "SPEAKER_00",
+    "text": "Okay decided, hum qwen2.5 hi use karenge final pipeline mein",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 82.0,
+    "end": 90.5,
+    "speaker": "SPEAKER_01",
+    "text": "Ek aur cheez, action item extraction ke liye hume test cases banane honge before we submit",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 90.5,
+    "end": 96.2,
+    "speaker": "SPEAKER_02",
+    "text": "Main un test cases ko next Monday tak ready kar dunga",
+    "language": "Hindi"
+  },
+  {
+    "start": 96.2,
+    "end": 103.7,
+    "speaker": "SPEAKER_00",
+    "text": "Perfect, so to summarize, Diya will finish frontend by Friday, Rohan will share accuracy report by Wednesday",
+    "language": "English"
+  },
+  {
+    "start": 103.7,
+    "end": 110.9,
+    "speaker": "SPEAKER_00",
+    "text": "aur Rohan test cases bhi Monday tak ready karega, and we're locking qwen2.5 as our final LLM choice",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 110.9,
+    "end": 116.0,
+    "speaker": "SPEAKER_01",
+    "text": "Sounds good to me, ek last point, humein PDF export bhi test karna hoga",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 116.0,
+    "end": 122.4,
+    "speaker": "SPEAKER_02",
+    "text": "Haan lekin uske liye abhi koi deadline decide nahi kiya hai, we'll discuss it next meeting",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 122.4,
+    "end": 128.0,
+    "speaker": "SPEAKER_00",
+    "text": "Agreed, let's wrap up here, thanks everyone for joining today's meeting",
+    "language": "English"
+  },
+  {
+    "start": 128.0,
+    "end": 131.2,
+    "speaker": "SPEAKER_01",
+    "text": "Thanks sab ko, milte hain next week",
+    "language": "Code-Mixed"
+  },
+  {
+    "start": 131.2,
+    "end": 133.5,
+    "speaker": "SPEAKER_02",
+    "text": "Bye everyone, take care",
+    "language": "English"
+  }
+]
