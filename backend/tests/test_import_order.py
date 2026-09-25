@@ -22,6 +22,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+
 # Run in a fresh interpreter each time: within one pytest process another test
 # may already have imported pyannote, which would make these assertions
 # meaningless.

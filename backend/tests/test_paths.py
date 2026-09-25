@@ -9,6 +9,8 @@ that state unreachable.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from meeting_assistant import paths as paths_mod
@@ -136,7 +138,7 @@ def test_list_runs_on_missing_directory_returns_empty(tmp_path):
 def test_run_paths_is_immutable(runs_dir):
     """A run's identity must not be reassignable after creation."""
     run = paths_mod.new_run("batch", "a.wav", runs_dir=runs_dir)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         run.run_id = "something-else"  # type: ignore[misc]
 
 

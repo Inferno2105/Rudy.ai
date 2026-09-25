@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
 from meeting_assistant import __version__, config
 from meeting_assistant.logging_setup import setup_logging
