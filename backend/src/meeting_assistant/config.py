@@ -81,7 +81,20 @@ WHISPER_COMPUTE_TYPE: str = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 # Diarization and speaker embeddings (pyannote.audio 4.x)
 # ---------------------------------------------------------------------------
 DIARIZATION_MODEL: str = os.environ.get("DIARIZATION_MODEL", "pyannote/speaker-diarization-3.1")
-EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "pyannote/embedding")
+# wespeaker-voxceleb-resnet34-LM, not the older pyannote/embedding repo: it is
+# what pyannote/speaker-diarization-3.1 itself uses internally (see that
+# pipeline's config.yaml), so the speaker registry compares voices in the same
+# embedding space the diarizer already trusts, and in testing pyannote/embedding
+# returned a 403 (gated separately) for a token that this model accepted fine.
+EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "pyannote/wespeaker-voxceleb-resnet34-LM")
+
+# Cross-chunk speaker identity (diarize.speaker_registry). Exposed as settings
+# rather than constants because the similarity threshold in particular is a
+# planned evaluation ablation (swept 0.60-0.90) — the default below is a
+# starting point, not a tuned value.
+SPEAKER_SIMILARITY_THRESHOLD: float = float(os.environ.get("SPEAKER_SIMILARITY_THRESHOLD", "0.75"))
+SPEAKER_EMA_ALPHA: float = float(os.environ.get("SPEAKER_EMA_ALPHA", "0.3"))
+SPEAKER_MIN_EMBED_SEC: float = float(os.environ.get("SPEAKER_MIN_EMBED_SEC", "1.0"))
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +180,8 @@ def output_affecting_settings() -> dict[str, str]:
         "whisper_compute_type": WHISPER_COMPUTE_TYPE,
         "diarization_model": DIARIZATION_MODEL,
         "embedding_model": EMBEDDING_MODEL,
+        "speaker_similarity_threshold": str(SPEAKER_SIMILARITY_THRESHOLD),
+        "speaker_ema_alpha": str(SPEAKER_EMA_ALPHA),
         "ollama_model": OLLAMA_MODEL,
     }
 
