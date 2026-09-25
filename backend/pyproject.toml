@@ -74,6 +74,13 @@ select = ["E", "F", "W", "I", "UP", "B"]
 # pyannote.audio. That ordering is load-bearing, not a style slip — see
 # meeting_assistant/bootstrap/ffmpeg_dll.py.
 
+[tool.ruff.lint.per-file-ignores]
+# Prompt bodies are experimental content sent verbatim to a language model,
+# not code to be wrapped for readability -- wrapping them would edit the
+# exact text a prompt version constant is supposed to pin. See
+# meeting_assistant/llm/prompts.py's module docstring.
+"src/meeting_assistant/llm/prompts.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The default run must stay fast and hermetic: no model loading, no Ollama,
