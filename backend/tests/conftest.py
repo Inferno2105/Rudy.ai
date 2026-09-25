@@ -11,11 +11,39 @@ model is marked ``slow`` or ``integration`` and excluded by default.
 from __future__ import annotations
 
 import json
+import wave
 from pathlib import Path
 
 import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def slice_wav():
+    """Cut ``[start_sec, end_sec)`` out of a WAV file into a new one.
+
+    Used by the real-audio integration tests (speaker registry, live
+    pipeline) to build independently-diarizable chunks out of one longer
+    fixture recording -- the same situation live capture puts each chunk in,
+    without needing a microphone or ffmpeg to produce it.
+    """
+
+    def cut(source: Path, dst_path: Path, start_sec: float, end_sec: float) -> Path:
+        with wave.open(str(source), "rb") as src:
+            channels = src.getnchannels()
+            sampwidth = src.getsampwidth()
+            rate = src.getframerate()
+            src.setpos(int(start_sec * rate))
+            frames = src.readframes(int((end_sec - start_sec) * rate))
+        with wave.open(str(dst_path), "wb") as out:
+            out.setnchannels(channels)
+            out.setsampwidth(sampwidth)
+            out.setframerate(rate)
+            out.writeframes(frames)
+        return dst_path
+
+    return cut
 
 
 @pytest.fixture

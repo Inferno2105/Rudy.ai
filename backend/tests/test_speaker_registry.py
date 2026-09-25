@@ -308,7 +308,7 @@ def test_resolved_output_composes_correctly_with_stitch_offsetting():
 # Real audio, real embedding model -- the one thing injected vectors cannot prove
 # ---------------------------------------------------------------------------
 @pytest.mark.integration
-def test_registry_recognizes_a_recurring_speaker_across_independent_chunks(tmp_path):
+def test_registry_recognizes_a_recurring_speaker_across_independent_chunks(tmp_path, slice_wav):
     """The scenario the registry exists for: two chunks diarized and embedded
     completely independently, exactly as live capture's chunks are -- their
     diarization labels (``SPEAKER_00``/``SPEAKER_01``) carry no relationship to
@@ -324,7 +324,6 @@ def test_registry_recognizes_a_recurring_speaker_across_independent_chunks(tmp_p
     tuning ``similarity_threshold`` against a labelled set is exactly the
     planned Phase 10 ablation, not something this phase claims to have solved.
     """
-    import wave
     from pathlib import Path
 
     from meeting_assistant import config
@@ -339,22 +338,8 @@ def test_registry_recognizes_a_recurring_speaker_across_independent_chunks(tmp_p
     if not source.exists():
         pytest.skip(f"integration fixture not present: {source}")
 
-    def slice_wav(dst_path: Path, start_sec: float, end_sec: float) -> Path:
-        with wave.open(str(source), "rb") as src:
-            channels = src.getnchannels()
-            sampwidth = src.getsampwidth()
-            rate = src.getframerate()
-            src.setpos(int(start_sec * rate))
-            frames = src.readframes(int((end_sec - start_sec) * rate))
-        with wave.open(str(dst_path), "wb") as out:
-            out.setnchannels(channels)
-            out.setsampwidth(sampwidth)
-            out.setframerate(rate)
-            out.writeframes(frames)
-        return dst_path
-
-    chunk1 = slice_wav(tmp_path / "chunk1.wav", 0.0, 16.0)
-    chunk2 = slice_wav(tmp_path / "chunk2.wav", 16.0, 32.0)
+    chunk1 = slice_wav(source, tmp_path / "chunk1.wav", 0.0, 16.0)
+    chunk2 = slice_wav(source, tmp_path / "chunk2.wav", 16.0, 32.0)
 
     pipeline = load_pipeline(config.HF_TOKEN)
     local1 = diarize_audio(pipeline, chunk1, num_speakers=2).segments

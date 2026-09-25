@@ -274,6 +274,33 @@ def cmd_batch(args: argparse.Namespace) -> int:
     return 0 if status == "completed" else 1
 
 
+def cmd_live(args: argparse.Namespace) -> int:
+    """Record from the microphone and process it incrementally until stopped."""
+    from meeting_assistant.errors import MeetingAssistantError
+    from meeting_assistant.pipeline.live import LiveOptions, run_live
+
+    opts = LiveOptions(
+        num_speakers=args.num_speakers,
+        device=args.device,
+        use_registry=not args.no_registry,
+    )
+
+    try:
+        paths = run_live(opts)
+    except MeetingAssistantError as exc:
+        print(f"Live run failed: {exc}", file=sys.stderr)
+        return 1
+
+    from meeting_assistant.io_utils import read_json
+
+    manifest = read_json(paths.manifest_path)
+    status = manifest.get("status")
+    print(f"\nRun {paths.run_id}: {status}")
+    print(f"  {paths.root}")
+
+    return 0 if status in ("completed", "partial") else 1
+
+
 def cmd_reindex(args: argparse.Namespace) -> int:  # noqa: ARG001 -- argparse namespace, currently no flags used
     """Rebuild the SQLite index from every run directory on disk."""
     from meeting_assistant import paths as paths_mod
@@ -337,6 +364,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="exclude a stage from this run (repeatable)",
     )
     batch.set_defaults(func=cmd_batch)
+
+    live = subparsers.add_parser(
+        "live", help="record from the microphone and process it incrementally"
+    )
+    live.add_argument("--device", type=int, metavar="N", help="sounddevice input device index")
+    live.add_argument(
+        "--num-speakers",
+        type=int,
+        metavar="N",
+        help="true speaker count, if known -- improves diarization accuracy",
+    )
+    live.add_argument(
+        "--no-registry",
+        action="store_true",
+        help="disable cross-chunk speaker identity resolution",
+    )
+    live.set_defaults(func=cmd_live)
 
     reindex = subparsers.add_parser("reindex", help="rebuild the SQLite index from disk")
     reindex.set_defaults(func=cmd_reindex)
