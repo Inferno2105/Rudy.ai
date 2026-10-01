@@ -46,3 +46,13 @@ class LLMError(MeetingAssistantError):
 
 class ArtifactError(MeetingAssistantError):
     """A required artifact is missing, unreadable, or not what was expected."""
+
+
+class ProvenanceError(MeetingAssistantError):
+    """Continuing a run would mix outputs from incompatible configurations.
+
+    Raised before anything is written, when a resume would run stages under a
+    different output-affecting configuration than the run's earlier stages, or
+    against a different recording than the one the run was created from. The
+    run on disk is left exactly as it was: this is a refusal, not a failure.
+    """

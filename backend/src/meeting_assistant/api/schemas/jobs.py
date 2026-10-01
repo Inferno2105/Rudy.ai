@@ -40,6 +40,11 @@ class ResumeRequest(BaseModel):
     force_stage: str | None = Field(
         default=None, description="Re-run from this stage, deleting it and every later artifact"
     )
+    allow_mixed_config: bool = Field(
+        default=False,
+        description="Resume even if the configuration changed since the run's earlier stages. "
+        "Debugging only: the run is marked inconsistent and excluded from evaluation.",
+    )
 
 
 class LiveStartRequest(BaseModel):

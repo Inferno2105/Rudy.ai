@@ -27,7 +27,7 @@ from meeting_assistant.api.jobs import JobManager
 from meeting_assistant.api.routers import jobs as jobs_router
 from meeting_assistant.api.routers import runs as runs_router
 from meeting_assistant.api.routers import system as system_router
-from meeting_assistant.errors import ArtifactError, ConfigError
+from meeting_assistant.errors import ArtifactError, ConfigError, ProvenanceError
 from meeting_assistant.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -85,6 +85,10 @@ def create_app(*, jobs: JobManager | None = None, preload_models: bool = True) -
     @app.exception_handler(ArtifactError)
     async def _artifact_error(_: Request, exc: ArtifactError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(ProvenanceError)
+    async def _provenance_error(_: Request, exc: ProvenanceError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(ConfigError)
     async def _config_error(_: Request, exc: ConfigError) -> JSONResponse:

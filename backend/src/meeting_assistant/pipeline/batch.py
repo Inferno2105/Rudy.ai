@@ -51,6 +51,9 @@ class BatchOptions:
     force_stage: str | None = None
     only_stage: str | None = None
     skip_stages: tuple[str, ...] = ()
+    # Resume even if the output-affecting configuration changed since the
+    # run's earlier stages. Marks the run inconsistent; debugging only.
+    allow_mixed_config: bool = False
 
 
 def _validate_stage_names(names: str | Iterable[str]) -> None:
@@ -165,7 +168,10 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
 
     Raises:
         ArtifactError: the audio file (for a new run) or the run (for
-            ``--resume``) does not exist. A missing prerequisite for one
+            ``--resume``) does not exist.
+        ProvenanceError: a resume would mix configurations or recordings
+            (see :meth:`RunManifest.check_resumable`). Raised before the run
+            is touched. A missing prerequisite for one
             *stage* (a Hugging Face token, an unreachable Ollama server) does
             **not** raise out of this function — it is recorded as that
             stage's own failure in the manifest, so it cannot abort stages
@@ -180,6 +186,11 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
         if audio_path is None:
             recorded = (manifest.provenance_block.get("input") or {}).get("path")
             audio_path = Path(recorded) if recorded else None
+        manifest.check_resumable(
+            audio_path=audio_path,
+            force_stage=opts.force_stage,
+            allow_mixed_config=opts.allow_mixed_config,
+        )
     else:
         if audio_path is None:
             raise ArtifactError("Audio file not found: None")
@@ -205,6 +216,11 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
         if not to_run:
             log.info("Nothing to do: every selected stage is already complete.")
         else:
+            if opts.resume_run_id:
+                manifest.begin_execution(allow_mixed_config=opts.allow_mixed_config)
+                if manifest.current_execution:
+                    log.info("Resume recorded as execution %d", manifest.current_execution)
+
             # A courtesy warning, not a gate: reports what is likely to fail
             # without aborting stages that do not need it. Each individual
             # stage that does need a credential or a server performs its own

@@ -269,7 +269,7 @@ def cmd_runs(args: argparse.Namespace) -> int:
 
 def cmd_batch(args: argparse.Namespace) -> int:
     """Run (or resume) the batch pipeline over one audio file."""
-    from meeting_assistant.errors import MeetingAssistantError
+    from meeting_assistant.errors import MeetingAssistantError, ProvenanceError
     from meeting_assistant.pipeline.batch import BatchOptions, run_batch
 
     opts = BatchOptions(
@@ -278,10 +278,14 @@ def cmd_batch(args: argparse.Namespace) -> int:
         force_stage=args.force,
         only_stage=args.only,
         skip_stages=tuple(args.skip or ()),
+        allow_mixed_config=args.allow_mixed_config,
     )
 
     try:
         paths = run_batch(args.audio, opts)
+    except ProvenanceError as exc:
+        print(f"Resume refused: {exc}", file=sys.stderr)
+        return 1
     except MeetingAssistantError as exc:
         print(f"Batch run failed: {exc}", file=sys.stderr)
         return 1
@@ -384,7 +388,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     """Score one or more runs against their labelled references and report."""
     from meeting_assistant import paths as paths_mod
     from meeting_assistant.evaluation.report import aggregate_reports, generate_clip_report
-    from meeting_assistant.io_utils import read_json, write_json
+    from meeting_assistant.io_utils import write_json
 
     references_dir = config.EVAL_DIR / "references"
     clip_dirs = []
@@ -396,21 +400,35 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print("See docs/evaluation.md for the dataset and labelling protocol.")
         return 1
 
+    from meeting_assistant.pipeline.manifest import RunManifest
+
+    # The newest *eligible* run per recording. A run whose stages came from
+    # mixed configurations or code, or that is not real audio, must never feed
+    # a reported number; why each one was passed over is printed, so a clip
+    # silently scored against an older run cannot go unnoticed.
     runs_by_source = {}
-    for run in paths_mod.list_runs():
+    passed_over: dict[str, list[str]] = {}
+    for run in paths_mod.list_runs():  # newest first
         if not run.manifest_path.exists():
             continue
-        manifest = read_json(run.manifest_path)
-        input_path = ((manifest.get("provenance") or {}).get("input") or {}).get("name")
-        if input_path:
-            runs_by_source.setdefault(input_path, run)  # newest first: list_runs() is newest-first
+        manifest = RunManifest.load(run)
+        input_name = (manifest.provenance_block.get("input") or {}).get("name")
+        if not input_name or input_name in runs_by_source:
+            continue
+        reason = manifest.evaluation_ineligibility()
+        if reason is not None:
+            passed_over.setdefault(input_name, []).append(f"{run.run_id}: {reason}")
+            continue
+        runs_by_source[input_name] = run
 
     reports = []
     for clip_dir in clip_dirs:
         clip_id = clip_dir.name
         run = runs_by_source.get(f"{clip_id}.wav")
+        for note in passed_over.get(f"{clip_id}.wav", []):
+            print(f"  [note] {clip_id}: passed over {note}")
         if run is None:
-            print(f"  [skip] {clip_id}: no run found for data/audio/{clip_id}.wav")
+            print(f"  [skip] {clip_id}: no eligible run found for data/audio/{clip_id}.wav")
             continue
         hypothesis = _load_clip_hypothesis(run)
         reference = _load_clip_reference(clip_dir)
@@ -566,6 +584,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="STAGE",
         help="exclude a stage from this run (repeatable)",
+    )
+    batch.add_argument(
+        "--allow-mixed-config",
+        action="store_true",
+        help="with --resume: continue even if the configuration changed since the run's "
+        "earlier stages (debugging only; the run is excluded from evaluation)",
     )
     batch.set_defaults(func=cmd_batch)
 

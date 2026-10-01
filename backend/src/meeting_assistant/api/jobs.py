@@ -26,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 from meeting_assistant.api.schemas.jobs import Job, JobKind, JobState
+from meeting_assistant.errors import ProvenanceError
 from meeting_assistant.logging_setup import get_logger
 from meeting_assistant.paths import RunPaths
 
@@ -183,7 +184,13 @@ class JobManager:
         run_opts = BatchOptions(num_speakers=opts.num_speakers, resume_run_id=paths.run_id)
         return self._enqueue("batch", paths, lambda: self._run_batch(None, run_opts))
 
-    def submit_resume(self, paths: RunPaths, *, force_stage: str | None = None) -> Job:
+    def submit_resume(
+        self,
+        paths: RunPaths,
+        *,
+        force_stage: str | None = None,
+        allow_mixed_config: bool = False,
+    ) -> Job:
         from meeting_assistant.pipeline.batch import BatchOptions
 
         with self._lock:
@@ -191,7 +198,11 @@ class JobManager:
                 r.run_id == paths.run_id and r.state in _ACTIVE for r in self._jobs.values()
             ):
                 raise BusyError(f"Run {paths.run_id} already has a queued or running job")
-        run_opts = BatchOptions(resume_run_id=paths.run_id, force_stage=force_stage)
+        run_opts = BatchOptions(
+            resume_run_id=paths.run_id,
+            force_stage=force_stage,
+            allow_mixed_config=allow_mixed_config,
+        )
         return self._enqueue("resume", paths, lambda: self._run_batch(None, run_opts))
 
     def start_live(self, opts) -> Job:
@@ -287,6 +298,12 @@ class JobManager:
         error: str | None = None
         try:
             record.work()
+        except ProvenanceError as exc:
+            # A refusal raised before the run was touched (the configuration
+            # changed while the job waited in the queue): the run is still a
+            # valid partial run, so it must not be marked failed.
+            error = f"{type(exc).__name__}: {exc}"
+            log.warning("Job %s refused: %s", record.job_id, exc)
         except Exception as exc:  # noqa: BLE001 -- one failed job must not kill the worker
             error = f"{type(exc).__name__}: {exc}"
             log.exception("Job %s failed", record.job_id)

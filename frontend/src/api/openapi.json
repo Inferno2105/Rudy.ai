@@ -530,7 +530,7 @@
           "runs"
         ],
         "summary": "Resume Run",
-        "description": "Run whatever stages have not completed, or re-run from ``force_stage``.",
+        "description": "Run whatever stages have not completed, or re-run from ``force_stage``.\n\nRefused with 409 if it would mix configurations or recordings in one run;\nchecked here, before queueing, so the refusal reaches the caller instead of\nsurfacing later as a failed job.",
         "operationId": "resume_run_api_runs__run_id__resume_post",
         "parameters": [
           {
@@ -1422,6 +1422,34 @@
         ],
         "title": "Body_upload_audio_api_uploads_post"
       },
+      "Consistency": {
+        "properties": {
+          "executions": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Executions",
+            "description": "Executions that produced the recorded stages"
+          },
+          "config": {
+            "type": "boolean",
+            "title": "Config"
+          },
+          "code": {
+            "type": "boolean",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "executions",
+          "config",
+          "code"
+        ],
+        "title": "Consistency",
+        "description": "Whether the stages on disk share one configuration and one clean commit."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1714,6 +1742,12 @@
             ],
             "title": "Force Stage",
             "description": "Re-run from this stage, deleting it and every later artifact"
+          },
+          "allow_mixed_config": {
+            "type": "boolean",
+            "title": "Allow Mixed Config",
+            "description": "Resume even if the configuration changed since the run's earlier stages. Debugging only: the run is marked inconsistent and excluded from evaluation.",
+            "default": false
           }
         },
         "type": "object",
@@ -1740,7 +1774,20 @@
           "provenance": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Provenance"
+            "title": "Provenance",
+            "description": "Provenance of execution 0 (the run itself)"
+          },
+          "resumes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Resumes",
+            "description": "Provenance of each later execution (1, 2, ...)"
+          },
+          "consistency": {
+            "$ref": "#/components/schemas/Consistency"
           },
           "stages": {
             "items": {
@@ -1781,6 +1828,7 @@
           "status",
           "data_origin",
           "provenance",
+          "consistency",
           "stages",
           "extra",
           "artifacts"

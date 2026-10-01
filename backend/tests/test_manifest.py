@@ -68,6 +68,7 @@ def test_record_stage_saves_immediately(runs_dir):
             "outputs": [],
             "counts": {"segments": 3},
             "error": None,
+            "execution": 0,
         }
     ]
 
@@ -155,6 +156,178 @@ def test_as_dict_matches_the_documented_shape(runs_dir):
         "status",
         "data_origin",
         "provenance",
+        "resumes",
+        "consistency",
         "stages",
         "extra",
     }
+
+
+
+# ---------------------------------------------------------------------------
+# Executions: a resumed run's stages may come from more than one process
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def recording(tmp_path):
+    path = tmp_path / "meeting.wav"
+    path.write_bytes(b"original recording")
+    return path
+
+
+def _started(runs_dir, recording):
+    paths = new_run("batch", recording.name, runs_dir=runs_dir)
+    return RunManifest.start(paths, mode="batch", audio_path=str(recording))
+
+
+def _add_resume(manifest, *, config_hash=None, git=None):
+    """Attribute later stages to a hand-made execution record."""
+    manifest.resumes.append(
+        {
+            "execution": len(manifest.resumes) + 1,
+            "config_hash": config_hash or manifest.provenance_block["config_hash"],
+            "git": git or {},
+        }
+    )
+    manifest.current_execution = len(manifest.resumes)
+
+
+def test_a_single_execution_run_is_consistent(runs_dir, recording):
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+    assert manifest.consistency() == {"executions": [0], "config": True, "code": True}
+    assert manifest.evaluation_ineligibility() is None
+
+
+def test_resume_is_recorded_as_a_new_execution(runs_dir, recording):
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+
+    resumed = RunManifest.load(manifest.paths)
+    resumed.check_resumable()
+    resumed.begin_execution()
+    resumed.record_stage("aligned", STAGE_OK)
+
+    data = read_json(manifest.paths.manifest_path)
+    assert [r["execution"] for r in data["resumes"]] == [1]
+    assert data["resumes"][0]["config_hash"] == data["provenance"]["config_hash"]
+    assert {s["name"]: s["execution"] for s in data["stages"]} == {"transcript": 0, "aligned": 1}
+    assert data["consistency"]["executions"] == [0, 1]
+
+
+def test_a_run_with_no_stages_recaptures_its_own_provenance(runs_dir, recording):
+    """The API creates a run and executes it later: nothing has been produced
+    yet, so the run's provenance should describe that execution, not a resume."""
+    manifest = _started(runs_dir, recording)
+    manifest.provenance_block["git"] = {"commit": "stale", "dirty": False}
+    original_input = manifest.provenance_block["input"]
+
+    manifest.begin_execution()
+
+    assert manifest.resumes == []
+    assert manifest.current_execution == 0
+    assert manifest.provenance_block["git"]["commit"] != "stale"
+    assert manifest.provenance_block["input"] == original_input
+
+
+def test_resume_under_a_different_config_is_refused(runs_dir, recording, monkeypatch):
+    from meeting_assistant import config
+    from meeting_assistant.errors import ProvenanceError
+
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "llama3.1:8b")
+
+    with pytest.raises(ProvenanceError, match="ollama_model"):
+        RunManifest.load(manifest.paths).check_resumable()
+
+
+def test_mixed_config_can_be_allowed_but_marks_the_run_inconsistent(
+    runs_dir, recording, monkeypatch
+):
+    from meeting_assistant import config
+
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "llama3.1:8b")
+
+    resumed = RunManifest.load(manifest.paths)
+    resumed.check_resumable(allow_mixed_config=True)
+    resumed.begin_execution(allow_mixed_config=True)
+    resumed.record_stage("summary", STAGE_OK)
+
+    assert resumed.resumes[0]["allow_mixed_config"] is True
+    assert resumed.consistency()["config"] is False
+    assert "different configurations" in resumed.evaluation_ineligibility()
+
+
+def test_forcing_every_earlier_stage_away_makes_a_config_change_acceptable(
+    runs_dir, recording, monkeypatch
+):
+    """--force transcript deletes everything, so nothing is left to mix with."""
+    from meeting_assistant import config
+
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "llama3.1:8b")
+
+    RunManifest.load(manifest.paths).check_resumable(force_stage="transcript")
+
+
+def test_resume_against_a_different_recording_is_always_refused(runs_dir, recording):
+    from meeting_assistant.errors import ProvenanceError
+
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+    recording.write_bytes(b"a different meeting under the same name")
+
+    with pytest.raises(ProvenanceError, match="sha256"):
+        RunManifest.load(manifest.paths).check_resumable(allow_mixed_config=True)
+
+
+def test_executions_from_different_commits_are_not_code_consistent(runs_dir, recording):
+    manifest = _started(runs_dir, recording)
+    manifest.provenance_block["git"] = {"commit": "aaa", "dirty": False}
+    manifest.record_stage("transcript", STAGE_OK)
+    _add_resume(manifest, git={"commit": "bbb", "dirty": False})
+    manifest.record_stage("aligned", STAGE_OK)
+
+    assert manifest.consistency()["code"] is False
+    assert "different or uncommitted code" in manifest.evaluation_ineligibility()
+
+
+def test_executions_from_a_dirty_tree_are_not_code_consistent(runs_dir, recording):
+    """Same commit hash, but uncommitted edits: the code that ran is unknown."""
+    manifest = _started(runs_dir, recording)
+    manifest.provenance_block["git"] = {"commit": "aaa", "dirty": True}
+    manifest.record_stage("transcript", STAGE_OK)
+    _add_resume(manifest, git={"commit": "aaa", "dirty": True})
+    manifest.record_stage("aligned", STAGE_OK)
+
+    assert manifest.consistency()["code"] is False
+
+
+def test_executions_on_one_clean_commit_are_consistent(runs_dir, recording):
+    manifest = _started(runs_dir, recording)
+    manifest.provenance_block["git"] = {"commit": "aaa", "dirty": False}
+    manifest.record_stage("transcript", STAGE_OK)
+    _add_resume(manifest, git={"commit": "aaa", "dirty": False})
+    manifest.record_stage("aligned", STAGE_OK)
+
+    assert manifest.consistency() == {"executions": [0, 1], "config": True, "code": True}
+
+
+def test_legacy_manifest_without_execution_fields_loads(runs_dir, recording):
+    from meeting_assistant.io_utils import write_json
+
+    manifest = _started(runs_dir, recording)
+    manifest.record_stage("transcript", STAGE_OK)
+    data = read_json(manifest.paths.manifest_path)
+    for key in ("resumes", "consistency"):
+        data.pop(key)
+    for stage in data["stages"]:
+        stage.pop("execution")
+    write_json(manifest.paths.manifest_path, data)
+
+    loaded = RunManifest.load(manifest.paths)
+    assert loaded.resumes == []
+    assert loaded.consistency() == {"executions": [0], "config": True, "code": True}

@@ -308,3 +308,68 @@ def test_resuming_a_nonexistent_run_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
     with pytest.raises(ArtifactError, match="No such run"):
         run_batch(None, BatchOptions(resume_run_id="20200101-000000_batch_nope"))
+
+
+def test_resume_under_a_changed_config_is_refused_before_touching_the_run(
+    patch_stages, audio_file, tmp_path, monkeypatch
+):
+    from meeting_assistant.errors import ProvenanceError
+
+    monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
+    patch_stages(_three_stage_chain(tagged={"fails": True}))
+    first = run_batch(audio_file, BatchOptions())
+    before = first.manifest_path.read_bytes()
+
+    monkeypatch.setattr(batch_mod.config, "OLLAMA_MODEL", "llama3.1:8b")
+    patch_stages(_three_stage_chain())
+    with pytest.raises(ProvenanceError):
+        run_batch(None, BatchOptions(resume_run_id=first.run_id))
+
+    assert first.manifest_path.read_bytes() == before
+    assert not first.has("tagged")
+
+
+def test_resume_attributes_the_stages_it_runs_to_a_new_execution(
+    patch_stages, audio_file, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
+    patch_stages(_three_stage_chain(tagged={"fails": True}))
+    first = run_batch(audio_file, BatchOptions())
+
+    patch_stages(_three_stage_chain())
+    run_batch(None, BatchOptions(resume_run_id=first.run_id))
+
+    data = read_json(first.manifest_path)
+    assert {s["name"]: s["execution"] for s in data["stages"]} == {
+        "transcript": 0,
+        "aligned": 0,
+        "tagged": 1,
+    }
+    assert len(data["resumes"]) == 1
+
+
+def test_a_resume_with_nothing_to_do_records_no_execution(
+    patch_stages, audio_file, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
+    patch_stages(_three_stage_chain())
+    first = run_batch(audio_file, BatchOptions())
+
+    run_batch(None, BatchOptions(resume_run_id=first.run_id))
+
+    assert read_json(first.manifest_path)["resumes"] == []
+
+
+def test_the_api_create_then_execute_path_is_a_single_execution(
+    patch_stages, audio_file, tmp_path, monkeypatch
+):
+    """create_batch_run followed by a resume must not look like a resumed run."""
+    monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
+    patch_stages(_three_stage_chain())
+    paths = batch_mod.create_batch_run(audio_file)
+
+    run_batch(None, BatchOptions(resume_run_id=paths.run_id))
+
+    data = read_json(paths.manifest_path)
+    assert data["resumes"] == []
+    assert data["consistency"] == {"executions": [0], "config": True, "code": True}

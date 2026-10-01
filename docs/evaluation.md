@@ -154,10 +154,24 @@ data/eval/
 
 Run `meeting-assistant eval` once a clip has both a labelled reference
 directory and a completed run (`meeting-assistant batch data/audio/<clip_id>.wav`)
-under `data/runs/`. It matches each reference to the most recent run whose
-input filename matches, scores every metric family both sides have data for,
-and writes `data/eval/reports/latest.json` — the full per-clip breakdown plus
-a cross-clip aggregate (`meeting_assistant.evaluation.report.aggregate_reports`).
+under `data/runs/`. It matches each reference to the most recent *eligible*
+run whose input filename matches, scores every metric family both sides have
+data for, and writes `data/eval/reports/latest.json` — the full per-clip
+breakdown plus a cross-clip aggregate
+(`meeting_assistant.evaluation.report.aggregate_reports`).
+
+A run is eligible only if its manifest says `data_origin: real_audio` and its
+`consistency` block shows every stage on disk was produced under one
+configuration and, if the run was resumed, one clean commit. A batch run can be
+resumed (`--resume`, or `POST /api/runs/{id}/resume`), so its stages may come
+from more than one process; each resume is recorded in the manifest's
+`resumes` list and every stage entry names the `execution` that produced it.
+Resuming under a changed output-affecting configuration is refused outright
+unless `--allow-mixed-config` is passed, and such a run is never scored.
+Resuming against a different recording (sha256 mismatch) is always refused.
+Runs passed over are printed with the reason, so a clip silently scored against
+an older run cannot go unnoticed. For reported numbers, run each clip fresh in
+one execution on a clean, committed tree.
 
 ## Metric methodology
 

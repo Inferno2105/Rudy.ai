@@ -137,10 +137,46 @@ def test_cmd_eval_skips_a_clip_with_no_matching_run(tmp_path, monkeypatch, capsy
     out = capsys.readouterr().out
 
     assert exit_code == 1
-    assert "no run found" in out
+    assert "no eligible run found" in out
 
 
 def argparse_namespace():
     import argparse
 
     return argparse.Namespace()
+
+
+def test_cmd_eval_passes_over_a_run_with_mixed_configurations(tmp_path, monkeypatch, capsys):
+    """A resumed run whose stages came from two configurations must never be scored."""
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+
+    _write_reference_clip(tmp_path / "eval" / "references" / "clip01")
+    run = _write_completed_run(tmp_path / "runs", "clip01.wav")
+    manifest = RunManifest.load(run)
+    manifest.resumes.append({"execution": 1, "config_hash": "different", "git": {}})
+    manifest.current_execution = 1
+    manifest.record_stage("summary", "ok")
+
+    exit_code = cmd_eval(argparse_namespace())
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "different configurations" in out
+    assert "no eligible run found" in out
+
+
+def test_cmd_eval_passes_over_a_synthetic_run(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+
+    _write_reference_clip(tmp_path / "eval" / "references" / "clip01")
+    run = _write_completed_run(tmp_path / "runs", "clip01.wav")
+    manifest = RunManifest.load(run)
+    manifest.data_origin = "synthetic"
+    manifest.save()
+
+    exit_code = cmd_eval(argparse_namespace())
+
+    assert exit_code == 1
+    assert "not 'real_audio'" in capsys.readouterr().out

@@ -38,6 +38,14 @@ class StageInfo(BaseModel):
     error: str | None = None
 
 
+class Consistency(BaseModel):
+    """Whether the stages on disk share one configuration and one clean commit."""
+
+    executions: list[int] = Field(description="Executions that produced the recorded stages")
+    config: bool
+    code: bool
+
+
 class RunDetail(BaseModel):
     """One run, read from its manifest on disk (the source of truth)."""
 
@@ -45,7 +53,11 @@ class RunDetail(BaseModel):
     mode: str
     status: str
     data_origin: str
-    provenance: dict[str, Any]
+    provenance: dict[str, Any] = Field(description="Provenance of execution 0 (the run itself)")
+    resumes: list[dict[str, Any]] = Field(
+        default_factory=list, description="Provenance of each later execution (1, 2, ...)"
+    )
+    consistency: Consistency
     stages: list[StageInfo]
     extra: dict[str, Any]
     artifacts: list[str] = Field(description="Artifact names present on disk, in pipeline order")

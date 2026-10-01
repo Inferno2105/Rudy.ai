@@ -24,7 +24,7 @@ from meeting_assistant.api.schemas.runs import (
     SummaryResponse,
     TranscriptResponse,
 )
-from meeting_assistant.errors import ArtifactError
+from meeting_assistant.errors import ArtifactError, ProvenanceError
 from meeting_assistant.io_utils import read_json
 from meeting_assistant.paths import ARTIFACTS, RunPaths
 from meeting_assistant.store import queries
@@ -77,12 +77,18 @@ def get_run(
 ) -> RunDetail:
     """One run, read from disk -- the manifest is authoritative, not the index."""
     manifest = _manifest(paths)
+    from meeting_assistant.pipeline.manifest import RunManifest
+
     return RunDetail(
         run_id=paths.run_id,
         mode=manifest.get("mode", ""),
         status=manifest.get("status", ""),
         data_origin=manifest.get("data_origin", ""),
         provenance=manifest.get("provenance", {}),
+        resumes=manifest.get("resumes", []),
+        # Recomputed rather than read, so manifests written before executions
+        # were tracked still report it.
+        consistency=RunManifest.load(paths).consistency(),
         stages=manifest.get("stages", []),
         extra=manifest.get("extra", {}),
         artifacts=paths.existing_artifacts(),
@@ -96,7 +102,13 @@ def resume_run(
     paths: RunPaths = Depends(get_run_paths),
     jobs: JobManager = Depends(get_jobs),
 ) -> JobAccepted:
-    """Run whatever stages have not completed, or re-run from ``force_stage``."""
+    """Run whatever stages have not completed, or re-run from ``force_stage``.
+
+    Refused with 409 if it would mix configurations or recordings in one run;
+    checked here, before queueing, so the refusal reaches the caller instead of
+    surfacing later as a failed job.
+    """
+    from meeting_assistant.pipeline.manifest import RunManifest
     from meeting_assistant.pipeline.stages import STAGES_BY_NAME
 
     manifest = _manifest(paths)
@@ -108,7 +120,15 @@ def resume_run(
             f"Unknown stage {body.force_stage!r}; known: {', '.join(STAGES_BY_NAME)}",
         )
     try:
-        job = jobs.submit_resume(paths, force_stage=body.force_stage)
+        RunManifest.load(paths).check_resumable(
+            force_stage=body.force_stage, allow_mixed_config=body.allow_mixed_config
+        )
+    except ProvenanceError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    try:
+        job = jobs.submit_resume(
+            paths, force_stage=body.force_stage, allow_mixed_config=body.allow_mixed_config
+        )
     except BusyError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return JobAccepted(job_id=job.job_id, run_id=job.run_id)

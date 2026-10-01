@@ -21,18 +21,31 @@ is missing (typically because an earlier *soft* stage failed). This is
 distinct from ``failed`` on purpose: a skipped stage is a consequence, not an
 independent problem, and collapsing the two would make it harder to see which
 stage actually broke.
+
+**Executions.** A batch run can be resumed, so its stages may be produced by
+more than one process, possibly under different code or settings. The
+``provenance`` block describes *execution 0*, the one that created the run;
+each resume that continues earlier work appends its own provenance record to
+``resumes`` (execution 1, 2, ...), and every stage entry records the
+``execution`` that produced it. ``consistency`` then states whether the stages
+on disk share one configuration and one clean commit -- the condition for a
+run's numbers to be attributable to a single, regenerable setup. A resume that
+would change the output-affecting configuration is refused unless explicitly
+allowed (see :meth:`RunManifest.check_resumable`), and resuming against a
+different recording is always refused.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from meeting_assistant import provenance
-from meeting_assistant.errors import ArtifactError
-from meeting_assistant.io_utils import read_json, write_json
-from meeting_assistant.paths import RunPaths
+from meeting_assistant import config, provenance
+from meeting_assistant.errors import ArtifactError, ProvenanceError
+from meeting_assistant.io_utils import read_json, sha256_file, write_json
+from meeting_assistant.paths import ARTIFACTS, RunPaths
 
 STATUS_COMPLETED = "completed"
 STATUS_PARTIAL = "partial"
@@ -55,6 +68,10 @@ class RunManifest:
     stages: list[dict[str, Any]] = field(default_factory=list)
     status: str = STATUS_PARTIAL
     extra: dict[str, Any] = field(default_factory=dict)
+    resumes: list[dict[str, Any]] = field(default_factory=list)
+    # Which execution new stage entries are attributed to. Not serialized: it
+    # belongs to the process holding this object, not to the run.
+    current_execution: int = 0
 
     @classmethod
     def start(
@@ -103,7 +120,141 @@ class RunManifest:
             stages=data.get("stages", []),
             status=data.get("status", STATUS_PARTIAL),
             extra=data.get("extra", {}),
+            resumes=data.get("resumes", []),
         )
+
+    def _execution_record(self, index: int) -> dict[str, Any]:
+        """Provenance of execution ``index`` (0 is the run's own block)."""
+        if index == 0:
+            return self.provenance_block
+        return self.resumes[index - 1] if 0 < index <= len(self.resumes) else {}
+
+    def _surviving_stages(self, force_stage: str | None) -> list[dict[str, Any]]:
+        """Stage entries that will still exist after an optional ``--force``."""
+        if force_stage is None or force_stage not in ARTIFACTS:
+            return list(self.stages)
+        names = list(ARTIFACTS)
+        dropped = set(names[names.index(force_stage) :])
+        return [entry for entry in self.stages if entry["name"] not in dropped]
+
+    def check_resumable(
+        self,
+        *,
+        audio_path: str | Path | None = None,
+        force_stage: str | None = None,
+        allow_mixed_config: bool = False,
+    ) -> None:
+        """Refuse a resume that would make this run's provenance untrue.
+
+        Read-only, so a caller (the API) can check before queueing anything.
+
+        Args:
+            audio_path: the recording the resume would read; defaults to the
+                one recorded at creation.
+            force_stage: the resume's ``--force`` stage, if any. Stages it will
+                delete are not earlier work the resume must stay consistent with.
+            allow_mixed_config: continue even though the configuration
+                differs. The run is then marked inconsistent and excluded from
+                evaluation, so this is for debugging, never for results.
+
+        Raises:
+            ProvenanceError: the recording's content differs from the one the
+                run was created from (never overridable: it would be a
+                different meeting), or the output-affecting configuration
+                differs from that of the stages that will be kept.
+        """
+        recorded_input = self.provenance_block.get("input") or {}
+        candidate = Path(audio_path) if audio_path is not None else None
+        if candidate is None and recorded_input.get("path"):
+            candidate = Path(recorded_input["path"])
+        recorded_sha = recorded_input.get("sha256")
+        if candidate is not None and candidate.exists() and recorded_sha:
+            if sha256_file(candidate) != recorded_sha:
+                raise ProvenanceError(
+                    f"{candidate} is not the recording run {self.run_id} was created "
+                    "from (its sha256 differs). Start a new run for it instead."
+                )
+
+        surviving = self._surviving_stages(force_stage)
+        if not surviving or allow_mixed_config:
+            return
+        current = provenance.config_hash()
+        owners = sorted({entry.get("execution", 0) for entry in surviving})
+        recorded = {self._execution_record(i).get("config_hash") for i in owners}
+        if recorded != {current}:
+            changed = _changed_settings(
+                self._execution_record(owners[-1]).get("settings") or {},
+                config.output_affecting_settings(),
+            )
+            detail = f" (changed: {'; '.join(changed)})" if changed else ""
+            raise ProvenanceError(
+                f"Run {self.run_id} was produced under config "
+                f"{', '.join(sorted(map(str, recorded)))}, but the current config is "
+                f"{current}{detail}. Resuming would mix outputs of different "
+                "configurations in one run. Start a new run, re-run every stage with "
+                "--force transcript, or pass --allow-mixed-config for a debugging-only "
+                "run that is excluded from evaluation."
+            )
+
+    def begin_execution(self, *, allow_mixed_config: bool = False) -> None:
+        """Record the provenance of the process about to run stages.
+
+        Call after :meth:`check_resumable` and after any ``--force``
+        invalidation. If no stage output survives (a run created but never
+        executed, as the API does, or ``--force`` from the first stage), the
+        run's own provenance block is re-captured: it should describe the
+        execution that produces every artifact, not the moment the directory
+        was made. Otherwise a resume record is appended and new stage entries
+        are attributed to it.
+        """
+        snapshot = provenance.capture()
+        if not self.stages:
+            if "input" in self.provenance_block:
+                snapshot["input"] = self.provenance_block["input"]
+            self.provenance_block = snapshot
+            self.current_execution = 0
+        else:
+            snapshot["execution"] = len(self.resumes) + 1
+            snapshot["allow_mixed_config"] = allow_mixed_config
+            self.resumes.append(snapshot)
+            self.current_execution = snapshot["execution"]
+        self.save()
+
+    def consistency(self) -> dict[str, Any]:
+        """Whether the recorded stages share one configuration and one commit.
+
+        ``code`` is only asserted across executions: a single execution is
+        consistent with itself (a dirty tree is recorded in its provenance
+        either way), but two executions are known to have run the same code
+        only if they share a commit and neither tree was dirty. Manifests
+        written before executions were recorded attribute every stage to
+        execution 0 and so report as consistent; that is all that can be known
+        about them.
+        """
+        owners = sorted({entry.get("execution", 0) for entry in self.stages}) or [0]
+        records = [self._execution_record(i) for i in owners]
+        same_config = len({r.get("config_hash") for r in records}) == 1
+        commits = {(r.get("git") or {}).get("commit") for r in records}
+        any_dirty = any((r.get("git") or {}).get("dirty") for r in records)
+        same_code = len(owners) == 1 or (len(commits) == 1 and not any_dirty)
+        return {"executions": owners, "config": same_config, "code": same_code}
+
+    def evaluation_ineligibility(self) -> str | None:
+        """Why this run must not feed a reported number, or ``None`` if it may."""
+        if self.data_origin != "real_audio":
+            return f"data_origin is {self.data_origin!r}, not 'real_audio'"
+        state = self.consistency()
+        if not state["config"]:
+            return (
+                "its stages were produced under different configurations "
+                f"(executions {state['executions']})"
+            )
+        if not state["code"]:
+            return (
+                "its stages were produced by different or uncommitted code "
+                f"(executions {state['executions']})"
+            )
+        return None
 
     def stage_status(self, name: str) -> str | None:
         """The most recently recorded status for a stage, or ``None`` if never run."""
@@ -137,6 +288,7 @@ class RunManifest:
                 "outputs": outputs or [],
                 "counts": counts or {},
                 "error": error,
+                "execution": self.current_execution,
             }
         )
         self.save()
@@ -169,9 +321,20 @@ class RunManifest:
             "status": self.status,
             "data_origin": self.data_origin,
             "provenance": self.provenance_block,
+            "resumes": self.resumes,
+            "consistency": self.consistency(),
             "stages": self.stages,
             "extra": self.extra,
         }
 
     def save(self) -> None:
         write_json(self.paths.manifest_path, self.as_dict())
+
+
+def _changed_settings(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    keys = sorted(set(before) | set(after))
+    return [
+        f"{k} {before.get(k)!r} -> {after.get(k)!r}"
+        for k in keys
+        if before.get(k) != after.get(k)
+    ]

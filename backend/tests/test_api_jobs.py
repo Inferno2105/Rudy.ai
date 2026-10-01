@@ -152,3 +152,72 @@ def test_finished_live_run_records_its_stats(client, api_env, wait_for_job):
 
     manifest = read_json(api_env / "runs" / run_id / "manifest.json")
     assert manifest["extra"]["live_stats"]["chunks_recorded"] >= 1
+
+
+def test_resume_under_a_changed_config_is_refused_with_409_and_queues_nothing(
+    client, audio_file, stub_pipeline, wait_for_job, monkeypatch
+):
+    from meeting_assistant import config
+
+    run_id = _start_batch(client, audio_file)["run_id"]
+    wait_for_job(run_id)
+    calls_before = len(stub_pipeline.batch_calls)
+
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "llama3.1:8b")
+    response = client.post(f"/api/runs/{run_id}/resume", json={"force_stage": "summary"})
+
+    assert response.status_code == 409
+    assert "ollama_model" in response.json()["detail"]
+    assert len(stub_pipeline.batch_calls) == calls_before
+    assert client.get(f"/api/runs/{run_id}").json()["status"] == "completed"
+
+
+def test_resume_with_mixed_config_allowed_is_passed_through(
+    client, audio_file, stub_pipeline, wait_for_job, monkeypatch
+):
+    from meeting_assistant import config
+
+    run_id = _start_batch(client, audio_file)["run_id"]
+    wait_for_job(run_id)
+
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "llama3.1:8b")
+    response = client.post(
+        f"/api/runs/{run_id}/resume",
+        json={"force_stage": "summary", "allow_mixed_config": True},
+    )
+
+    assert response.status_code == 202
+    wait_for_job(run_id)
+    assert stub_pipeline.batch_calls[-1].allow_mixed_config is True
+
+
+def test_a_refusal_inside_the_job_does_not_mark_the_run_failed(
+    client, audio_file, stub_pipeline, wait_for_job
+):
+    """If the pipeline itself refuses (config changed while queued), the run
+    on disk is untouched and must stay resumable, not become "failed"."""
+    from meeting_assistant.errors import ProvenanceError
+
+    run_id = _start_batch(client, audio_file)["run_id"]
+    wait_for_job(run_id)
+
+    def refuse(audio_path, opts):
+        raise ProvenanceError("config changed")
+
+    client.app.state.jobs._run_batch = refuse
+    response = client.post(f"/api/runs/{run_id}/resume", json={})
+    assert response.status_code == 202
+
+    detail = wait_for_job(run_id)
+    assert detail["job"]["state"] == "failed"
+    assert "ProvenanceError" in detail["job"]["error"]
+    assert detail["status"] == "completed"
+    assert "error" not in detail["extra"]
+
+
+def test_run_detail_reports_consistency(client, audio_file, wait_for_job):
+    run_id = _start_batch(client, audio_file)["run_id"]
+    detail = wait_for_job(run_id)
+
+    assert detail["consistency"] == {"executions": [0], "config": True, "code": True}
+    assert detail["resumes"] == []
