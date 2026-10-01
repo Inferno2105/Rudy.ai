@@ -59,6 +59,10 @@ class RunDetail(BaseModel):
         default_factory=list, description="Provenance of each later execution (1, 2, ...)"
     )
     consistency: Consistency
+    evaluation_ineligibility: str | None = Field(
+        default=None,
+        description="Why this run must not feed a reported number; null if it may",
+    )
     stages: list[StageInfo]
     extra: dict[str, Any]
     artifacts: list[str] = Field(description="Artifact names present on disk, in pipeline order")

@@ -1,0 +1,106 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens. Colours are semantic (surface, muted, accent...) rather than
+ * literal, so light and dark themes are one set of overrides and components
+ * never branch on the theme themselves.
+ */
+@theme {
+  --font-sans:
+    'Inter Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+
+  --color-canvas: oklch(98.4% 0.003 247.858);
+  --color-surface: oklch(100% 0 0);
+  --color-subtle: oklch(96.8% 0.007 247.896);
+  --color-border: oklch(92.9% 0.013 255.508);
+  --color-strong-border: oklch(86.9% 0.022 252.894);
+  --color-fg: oklch(20.8% 0.042 265.755);
+  --color-muted: oklch(44.6% 0.043 257.281);
+  --color-faint: oklch(55.4% 0.046 257.417);
+  --color-accent: oklch(51.1% 0.262 276.966);
+  --color-accent-hover: oklch(45.7% 0.24 277.023);
+  --color-accent-fg: oklch(100% 0 0);
+  --color-accent-soft: oklch(96.2% 0.018 272.314);
+  --color-danger: oklch(50.5% 0.213 27.518);
+  --color-danger-soft: oklch(97.1% 0.013 17.38);
+  --color-warning: oklch(55.5% 0.163 48.998);
+  --color-warning-soft: oklch(98.7% 0.022 95.277);
+  --color-success: oklch(52.7% 0.154 150.069);
+  --color-success-soft: oklch(98.2% 0.018 155.826);
+  --color-ring: oklch(58.5% 0.233 277.117);
+}
+
+.dark {
+  --color-canvas: oklch(15.5% 0.03 265);
+  --color-surface: oklch(20.8% 0.042 265.755);
+  --color-subtle: oklch(25.5% 0.04 264);
+  --color-border: oklch(30% 0.036 262);
+  --color-strong-border: oklch(37.2% 0.044 257.287);
+  --color-fg: oklch(96.8% 0.007 247.896);
+  --color-muted: oklch(76% 0.03 256);
+  --color-faint: oklch(68% 0.035 257);
+  --color-accent: oklch(67.3% 0.182 276.935);
+  --color-accent-hover: oklch(74% 0.15 277);
+  --color-accent-fg: oklch(15.5% 0.03 265);
+  --color-accent-soft: oklch(28% 0.08 277);
+  --color-danger: oklch(70.4% 0.191 22.216);
+  --color-danger-soft: oklch(26% 0.07 22);
+  --color-warning: oklch(82.8% 0.189 84.429);
+  --color-warning-soft: oklch(27% 0.06 70);
+  --color-success: oklch(79.2% 0.209 151.711);
+  --color-success-soft: oklch(26% 0.06 155);
+  --color-ring: oklch(67.3% 0.182 276.935);
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+    /* Keep focused or scrolled-to elements clear of the sticky header. */
+    scroll-padding-top: 4.5rem;
+  }
+
+  /* No double-tap zoom delay on controls; no grey flash on tap. */
+  a,
+  button,
+  input,
+  select,
+  label,
+  summary {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas text-fg font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Devanagari needs more line height than Latin to keep matras clear. */
+  :lang(hi) {
+    line-height: 1.75;
+  }
+
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
+
+  ::selection {
+    @apply bg-accent-soft text-fg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

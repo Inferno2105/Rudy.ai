@@ -1,0 +1,283 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { FileAudio, Play, UploadCloud } from 'lucide-react'
+import { useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useNavigate } from 'react-router'
+
+import { uploadAudio } from '../api/client'
+import { keys, useAudioFiles, useStartBatch } from '../api/queries'
+import { PageHeader } from '../components/AppShell'
+import { ErrorState } from '../components/states'
+import { Button } from '../components/ui/button'
+import { Card, CardBody, CardHeader } from '../components/ui/card'
+import { Callout, LoadingBlock } from '../components/ui/feedback'
+import { Field, Input } from '../components/ui/field'
+import { Progress } from '../components/ui/progress'
+import { formatBytes, formatDuration } from '../lib/format'
+import { cn, useDocumentTitle } from '../lib/utils'
+
+const ACCEPTED = ['.wav', '.mp3', '.m4a', '.flac']
+
+type UploadState =
+  | { kind: 'idle' }
+  | { kind: 'uploading'; name: string; fraction: number }
+  | { kind: 'done'; name: string; alreadyPresent: boolean }
+  | { kind: 'error'; message: string }
+
+export function NewRunPage() {
+  useDocumentTitle('New run')
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const files = useAudioFiles()
+  const start = useStartBatch()
+  const input = useRef<HTMLInputElement>(null)
+  const abort = useRef<AbortController | null>(null)
+
+  const [selected, setSelected] = useState<string | null>(null)
+  const [speakers, setSpeakers] = useState('')
+  const [upload, setUpload] = useState<UploadState>({ kind: 'idle' })
+  const [dragging, setDragging] = useState(false)
+
+  async function handleFile(file: File) {
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ACCEPTED.includes(extension)) {
+      setUpload({
+        kind: 'error',
+        message: `${file.name} is not a supported recording (${ACCEPTED.join(', ')}).`,
+      })
+      return
+    }
+    abort.current = new AbortController()
+    setUpload({ kind: 'uploading', name: file.name, fraction: 0 })
+    try {
+      const result = await uploadAudio(
+        file,
+        (fraction) => setUpload({ kind: 'uploading', name: file.name, fraction }),
+        abort.current.signal,
+      )
+      setUpload({ kind: 'done', name: result.name, alreadyPresent: result.already_present })
+      setSelected(result.name)
+      await queryClient.invalidateQueries({ queryKey: keys.audio })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setUpload({ kind: 'idle' })
+      } else {
+        setUpload({
+          kind: 'error',
+          message: error instanceof Error ? error.message : 'Upload failed',
+        })
+      }
+    }
+  }
+
+  function onDrop(event: DragEvent) {
+    event.preventDefault()
+    setDragging(false)
+    const file = event.dataTransfer.files[0]
+    if (file) void handleFile(file)
+  }
+
+  const speakerCount = speakers.trim() === '' ? null : Number(speakers)
+  const speakersInvalid =
+    speakerCount !== null &&
+    (!Number.isInteger(speakerCount) || speakerCount < 1 || speakerCount > 20)
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!selected || speakersInvalid) return
+    start.mutate(
+      { audio: selected, num_speakers: speakerCount },
+      { onSuccess: (accepted) => navigate(`/runs/${encodeURIComponent(accepted.run_id)}`) },
+    )
+  }
+
+  const uploading = upload.kind === 'uploading'
+
+  return (
+    <>
+      <PageHeader
+        title="New run"
+        description="Process a recording end to end: transcription, speakers, language tagging, summary and action items."
+      />
+
+      <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader
+              title="Upload a recording"
+              description={`${ACCEPTED.join(', ')} · stored in the server's audio folder`}
+            />
+            <CardBody>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  setDragging(true)
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={onDrop}
+                className={cn(
+                  'flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors',
+                  dragging ? 'border-accent bg-accent-soft' : 'border-strong-border',
+                )}
+              >
+                <UploadCloud className="text-muted mb-3 size-8" aria-hidden />
+                <p className="text-fg text-sm font-medium">Drop a recording here</p>
+                <p className="text-muted mt-1 text-sm">or</p>
+                <Button
+                  className="mt-3"
+                  onClick={() => input.current?.click()}
+                  disabled={uploading}
+                >
+                  Choose file…
+                </Button>
+                <input
+                  ref={input}
+                  type="file"
+                  accept={ACCEPTED.join(',')}
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-label="Recording file"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) void handleFile(file)
+                    event.target.value = ''
+                  }}
+                />
+              </div>
+
+              <div className="mt-4" aria-live="polite">
+                {upload.kind === 'uploading' ? (
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-fg truncate">Uploading {upload.name}</span>
+                      <span className="text-muted tabular-nums">
+                        {Math.round(upload.fraction * 100)}%
+                      </span>
+                    </div>
+                    <Progress value={upload.fraction} label={`Uploading ${upload.name}`} />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-2"
+                      onClick={() => abort.current?.abort()}
+                    >
+                      Cancel upload
+                    </Button>
+                  </div>
+                ) : upload.kind === 'done' ? (
+                  <Callout tone="info" announce="status">
+                    {upload.alreadyPresent
+                      ? `${upload.name} was already on the server (identical content); selected it.`
+                      : `Uploaded ${upload.name} and selected it.`}
+                  </Callout>
+                ) : upload.kind === 'error' ? (
+                  <Callout tone="danger" title="Upload failed" announce="alert">
+                    {upload.message}
+                  </Callout>
+                ) : null}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Or choose a recording on the server"
+              description="Files in the data/audio folder."
+            />
+            <CardBody>
+              {files.isPending ? (
+                <LoadingBlock label="Loading recordings" lines={3} />
+              ) : files.isError ? (
+                <ErrorState error={files.error} onRetry={() => void files.refetch()} />
+              ) : files.data.length === 0 ? (
+                <p className="text-muted text-sm">No recordings yet. Upload one above.</p>
+              ) : (
+                <fieldset>
+                  <legend className="sr-only">Recording</legend>
+                  <ul className="divide-border ring-border divide-y rounded-lg ring-1">
+                    {files.data.map((file) => (
+                      <li key={file.name}>
+                        <label
+                          className={cn(
+                            'flex cursor-pointer items-center gap-3 px-4 py-3 text-sm',
+                            selected === file.name ? 'bg-accent-soft' : 'hover:bg-subtle/60',
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="recording"
+                            value={file.name}
+                            checked={selected === file.name}
+                            onChange={() => setSelected(file.name)}
+                            className="accent-accent size-4"
+                          />
+                          <FileAudio className="text-muted size-4 shrink-0" aria-hidden />
+                          <span className="text-fg min-w-0 flex-1 truncate font-medium">
+                            {file.name}
+                          </span>
+                          <span className="text-muted text-xs whitespace-nowrap tabular-nums">
+                            {file.duration_sec != null
+                              ? `${formatDuration(file.duration_sec)} · `
+                              : ''}
+                            {formatBytes(file.size_bytes)}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </fieldset>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+
+        <div>
+          <Card className="lg:sticky lg:top-20">
+            <CardHeader title="Run options" />
+            <CardBody className="space-y-5">
+              <div>
+                <p className="text-fg text-sm font-medium">Recording</p>
+                <p className="text-muted mt-1 truncate text-sm">{selected ?? 'None selected'}</p>
+              </div>
+              <Field
+                label="Number of speakers"
+                hint="Optional. If you know it, diarization is more accurate."
+                error={speakersInvalid ? 'Enter a whole number from 1 to 20.' : undefined}
+              >
+                {({ id, describedBy }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={speakersInvalid || undefined}
+                    name="num_speakers"
+                    autoComplete="off"
+                    inputMode="numeric"
+                    placeholder="Detect automatically"
+                    value={speakers}
+                    onChange={(event) => setSpeakers(event.target.value)}
+                  />
+                )}
+              </Field>
+              {start.isError ? (
+                <Callout tone="danger" title="Could not start the run" announce="alert">
+                  {start.error.message}
+                </Callout>
+              ) : null}
+              <Button
+                type="submit"
+                variant="primary"
+                className="w-full"
+                disabled={!selected || speakersInvalid || uploading || start.isPending}
+              >
+                <Play aria-hidden /> {start.isPending ? 'Starting…' : 'Start processing'}
+              </Button>
+              <p className="text-muted text-xs">
+                Runs are processed one at a time. A long recording can take several minutes on CPU;
+                you can leave this page and come back.
+              </p>
+            </CardBody>
+          </Card>
+        </div>
+      </form>
+    </>
+  )
+}

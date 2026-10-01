@@ -2597,6 +2597,18 @@
           "consistency": {
             "$ref": "#/components/schemas/Consistency"
           },
+          "evaluation_ineligibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Ineligibility",
+            "description": "Why this run must not feed a reported number; null if it may"
+          },
           "stages": {
             "items": {
               "$ref": "#/components/schemas/StageInfo"

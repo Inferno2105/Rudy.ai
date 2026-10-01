@@ -46,18 +46,38 @@ torch/pyannote/webrtcvad stack have no prebuilt Windows wheels there), a running
 ```powershell
 python -m venv venv312
 .\venv312\Scripts\Activate.ps1
-pip install -e ".\backend[eval,dev]"
+pip install -e ".\backend[eval,api,dev]"
 
 Copy-Item .env.example .env     # then fill in HF_TOKEN
 ollama pull qwen2.5:7b
 
 meeting-assistant doctor        # verifies every prerequisite before you run anything
+
+cd frontend; npm install; npm run build; cd ..   # the web UI (Node 22+)
 ```
 
 You also need to accept the terms for the gated pyannote model repositories on
 Hugging Face; `doctor` will tell you which ones if access fails.
 
 ## Usage
+
+### Web UI
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # put the result in .env as API_TOKEN=...
+meeting-assistant serve                                         # UI at http://127.0.0.1:8000/
+meeting-assistant serve --host 0.0.0.0                          # reachable from other devices on the LAN
+```
+
+The UI lists every meeting, processes uploaded recordings with live stage
+progress, records live sessions from the server's microphone, and shows each
+run's transcript (Romanized or original script, with click-to-seek audio),
+summary, action items, speaker statistics and full provenance, plus the
+evaluation report. Every route except `/api/health` requires the token; the
+browser asks for it once and keeps it for the session. See `frontend/README.md`
+for development.
+
+### Command line
 
 ```powershell
 meeting-assistant batch .\data\audio\meeting.wav    # process a recording end to end

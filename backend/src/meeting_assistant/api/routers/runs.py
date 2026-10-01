@@ -89,6 +89,7 @@ def get_run(
     manifest = _manifest(paths)
     from meeting_assistant.pipeline.manifest import RunManifest
 
+    loaded = RunManifest.load(paths)
     return RunDetail(
         run_id=paths.run_id,
         mode=manifest.get("mode", ""),
@@ -98,7 +99,8 @@ def get_run(
         resumes=manifest.get("resumes", []),
         # Recomputed rather than read, so manifests written before executions
         # were tracked still report it.
-        consistency=RunManifest.load(paths).consistency(),
+        consistency=loaded.consistency(),
+        evaluation_ineligibility=loaded.evaluation_ineligibility(),
         stages=manifest.get("stages", []),
         extra=manifest.get("extra", {}),
         artifacts=paths.existing_artifacts(),

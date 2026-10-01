@@ -221,3 +221,4 @@ def test_run_detail_reports_consistency(client, audio_file, wait_for_job):
 
     assert detail["consistency"] == {"executions": [0], "config": True, "code": True}
     assert detail["resumes"] == []
+    assert detail["evaluation_ineligibility"] is None
