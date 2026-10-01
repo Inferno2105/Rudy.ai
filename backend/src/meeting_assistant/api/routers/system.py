@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from meeting_assistant import __version__, config
 from meeting_assistant.api.auth import require_token
 from meeting_assistant.api.deps import get_db
+from meeting_assistant.api.schemas.eval import EvalReport
 from meeting_assistant.api.schemas.system import (
     AudioFile,
     Health,
@@ -170,7 +171,7 @@ def rebuild_index(conn: sqlite3.Connection = Depends(get_db)) -> IndexRebuildRes
     return IndexRebuildResult(indexed=reindex_all(conn, runs), total=len(runs))
 
 
-@router.get("/eval/report")
+@router.get("/eval/report", response_model=EvalReport)
 def eval_report() -> dict[str, Any]:
     """The latest ``meeting-assistant eval`` report, as written to disk."""
     path = config.EVAL_DIR / "reports" / "latest.json"

@@ -138,6 +138,10 @@ API_CORS_ORIGINS: list[str] = [
     if origin.strip()
 ]
 API_MAX_UPLOAD_MB: int = int(os.environ.get("API_MAX_UPLOAD_MB", "500"))
+# Lifetime of a signed audio-playback URL (see meeting_assistant.api.auth).
+API_MEDIA_TICKET_SEC: int = int(os.environ.get("API_MEDIA_TICKET_SEC", "600"))
+# The built web UI (`npm run build` in frontend/). Served at / when present.
+FRONTEND_DIST: Path = Path(os.environ.get("FRONTEND_DIST") or REPO_ROOT / "frontend" / "dist")
 
 
 # ---------------------------------------------------------------------------

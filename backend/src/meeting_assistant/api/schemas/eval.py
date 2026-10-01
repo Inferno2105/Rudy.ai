@@ -1,0 +1,123 @@
+"""The evaluation report served by ``GET /api/eval/report``.
+
+Mirrors what :mod:`meeting_assistant.evaluation.report` and ``meeting-assistant
+eval`` write to ``data/eval/reports/latest.json``. Every metric family is
+optional (a clip reports only the families it has references for), and every
+model allows extra fields so a metric added to the harness later reaches the
+UI's "raw" view before the schema catches up -- but the named fields are what
+the dashboard renders, so they are typed.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class _Open(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class WordErrors(_Open):
+    wer: float | None = None
+    substitutions: float | None = None
+    deletions: float | None = None
+    insertions: float | None = None
+    hits: float | None = None
+    reference_words: float | None = None
+
+
+class CharErrors(_Open):
+    cer: float | None = None
+    reference_chars: float | None = None
+
+
+class AsrMetrics(_Open):
+    wer_raw: WordErrors | None = None
+    wer_romanized: WordErrors | None = None
+    cer_raw: CharErrors | None = None
+
+
+class DiarizationMetrics(_Open):
+    der: float | None = None
+    confusion: float | None = None
+    missed_detection: float | None = None
+    false_alarm: float | None = None
+    total: float | None = None
+    collar: float | None = None
+
+
+class LanguageIdMetrics(_Open):
+    accuracy: float | None = None
+    per_class: dict[str, dict[str, float | None]] | None = None
+    confusion: Any = None
+    labels: list[str] | None = None
+
+
+class RougeMetrics(_Open):
+    rouge1_f: float | None = None
+    rouge2_f: float | None = None
+    rougeL_f: float | None = None  # noqa: N815 -- the harness's own key
+    rouge1_precision: float | None = None
+    rouge1_recall: float | None = None
+
+
+class ActionItemMetrics(_Open):
+    precision: float | None = None
+    recall: float | None = None
+    f1: float | None = None
+    matched: float | None = None
+    predicted_count: float | None = None
+    reference_count: float | None = None
+    deadline_accuracy: float | None = None
+
+
+class RegistryMetrics(_Open):
+    identity_accuracy: float | None = None
+    predicted_speaker_count: float | None = None
+    true_speaker_count: float | None = None
+    unresolved_rate: float | None = None
+    mean_match_similarity: float | None = None
+
+
+class ClipSource(_Open):
+    """Which run a clip was scored against -- what makes its numbers traceable."""
+
+    run_id: str
+    git_commit: str | None = None
+    git_dirty: bool | None = None
+    config_hash: str | None = None
+
+
+class MetricFamilies(_Open):
+    asr: AsrMetrics | None = None
+    diarization: DiarizationMetrics | None = None
+    language_id: LanguageIdMetrics | None = None
+    summary: RougeMetrics | None = None
+    action_items: ActionItemMetrics | None = None
+    registry: RegistryMetrics | None = None
+    system: dict[str, Any] | None = None
+
+
+class ClipReport(MetricFamilies):
+    clip_id: str
+    source: ClipSource | None = Field(
+        default=None, description="Absent only in reports written before sources were recorded"
+    )
+
+
+class AggregateReport(MetricFamilies):
+    num_clips: int
+
+
+class EvalReport(_Open):
+    generated_at: str | None = None
+    git: dict[str, Any] | None = Field(default=None, description="Code state at generation")
+    config_hashes: list[str] = Field(
+        default_factory=list,
+        description="Distinct config hashes across the scored runs; more than one means the "
+        "aggregate mixes configurations",
+    )
+    clips: list[ClipReport]
+    aggregate: AggregateReport

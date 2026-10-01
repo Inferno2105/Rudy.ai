@@ -277,9 +277,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Eval Report Api Eval Report Get"
+                  "$ref": "#/components/schemas/EvalReport"
                 }
               }
             }
@@ -964,14 +962,14 @@
         }
       }
     },
-    "/api/runs/{run_id}/audio": {
-      "get": {
+    "/api/runs/{run_id}/audio-url": {
+      "post": {
         "tags": [
           "runs"
         ],
-        "summary": "Get Run Audio",
-        "description": "The run's source recording, for playback alongside its transcript.\n\nServed only if the recorded input path resolves inside the audio\ndirectory: the path comes from a manifest on disk, and this endpoint must\nnever become a way to read arbitrary files that happen to be named there.",
-        "operationId": "get_run_audio_api_runs__run_id__audio_get",
+        "summary": "Get Run Audio Url",
+        "description": "A short-lived URL an ``<audio>`` element can play without the API token.",
+        "operationId": "get_run_audio_url_api_runs__run_id__audio_url_post",
         "parameters": [
           {
             "name": "run_id",
@@ -1001,7 +999,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioUrl"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1053,7 +1058,100 @@
         ],
         "responses": {
           "200": {
+            "description": "``text/event-stream`` of ``manifest`` (ManifestEvent), ``segments`` (SegmentsEvent), ``job`` (Job) and finally ``end`` (EndEvent)",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ManifestEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SegmentsEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Job"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EndEvent"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/audio": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Run Audio",
+        "description": "The run's source recording, for playback alongside its transcript.\n\nAccepts the bearer token (scripts) or a media ticket (an ``<audio>``\nelement). Supports HTTP Range requests, so the player can seek.",
+        "operationId": "get_run_audio_api_runs__run_id__audio_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From POST .../audio-url",
+              "title": "Ticket"
+            },
+            "description": "From POST .../audio-url"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Neither a valid token nor a valid ticket"
           },
           "422": {
             "description": "Validation Error",
@@ -1336,6 +1434,90 @@
         "type": "object",
         "title": "ActionItem"
       },
+      "ActionItemMetrics": {
+        "properties": {
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall"
+          },
+          "f1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F1"
+          },
+          "matched": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched"
+          },
+          "predicted_count": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted Count"
+          },
+          "reference_count": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Count"
+          },
+          "deadline_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Accuracy"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "ActionItemMetrics"
+      },
       "ActionItemsResponse": {
         "properties": {
           "action_items": {
@@ -1351,6 +1533,129 @@
           "action_items"
         ],
         "title": "ActionItemsResponse"
+      },
+      "AggregateReport": {
+        "properties": {
+          "asr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsrMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diarization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiarizationMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LanguageIdMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RougeMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "action_items": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionItemMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "registry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "system": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System"
+          },
+          "num_clips": {
+            "type": "integer",
+            "title": "Num Clips"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "num_clips"
+        ],
+        "title": "AggregateReport"
+      },
+      "AsrMetrics": {
+        "properties": {
+          "wer_raw": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WordErrors"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wer_romanized": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WordErrors"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cer_raw": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CharErrors"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "AsrMetrics"
       },
       "AudioFile": {
         "properties": {
@@ -1380,6 +1685,26 @@
           "size_bytes"
         ],
         "title": "AudioFile"
+      },
+      "AudioUrl": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Relative URL with a signed, run-scoped ticket"
+          },
+          "expires_at": {
+            "type": "integer",
+            "title": "Expires At",
+            "description": "Unix timestamp after which the URL stops working"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "title": "AudioUrl"
       },
       "BatchRequest": {
         "properties": {
@@ -1422,6 +1747,180 @@
         ],
         "title": "Body_upload_audio_api_uploads_post"
       },
+      "CharErrors": {
+        "properties": {
+          "cer": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cer"
+          },
+          "reference_chars": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Chars"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "CharErrors"
+      },
+      "ClipReport": {
+        "properties": {
+          "asr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsrMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diarization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiarizationMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LanguageIdMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RougeMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "action_items": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionItemMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "registry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "system": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System"
+          },
+          "clip_id": {
+            "type": "string",
+            "title": "Clip Id"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClipSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent only in reports written before sources were recorded"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "clip_id"
+        ],
+        "title": "ClipReport"
+      },
+      "ClipSource": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "git_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Commit"
+          },
+          "git_dirty": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Dirty"
+          },
+          "config_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Hash"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "run_id"
+        ],
+        "title": "ClipSource",
+        "description": "Which run a clip was scored against -- what makes its numbers traceable."
+      },
       "Consistency": {
         "properties": {
           "executions": {
@@ -1449,6 +1948,132 @@
         ],
         "title": "Consistency",
         "description": "Whether the stages on disk share one configuration and one clean commit."
+      },
+      "DiarizationMetrics": {
+        "properties": {
+          "der": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Der"
+          },
+          "confusion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confusion"
+          },
+          "missed_detection": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missed Detection"
+          },
+          "false_alarm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "False Alarm"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "collar": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collar"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "DiarizationMetrics"
+      },
+      "EvalReport": {
+        "properties": {
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "git": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git",
+            "description": "Code state at generation"
+          },
+          "config_hashes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Config Hashes",
+            "description": "Distinct config hashes across the scored runs; more than one means the aggregate mixes configurations"
+          },
+          "clips": {
+            "items": {
+              "$ref": "#/components/schemas/ClipReport"
+            },
+            "type": "array",
+            "title": "Clips"
+          },
+          "aggregate": {
+            "$ref": "#/components/schemas/AggregateReport"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "clips",
+          "aggregate"
+        ],
+        "title": "EvalReport"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1637,6 +2262,65 @@
         ],
         "title": "JobAccepted"
       },
+      "LanguageIdMetrics": {
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "per_class": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Class"
+          },
+          "confusion": {
+            "title": "Confusion"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "LanguageIdMetrics"
+      },
       "LiveStartRequest": {
         "properties": {
           "num_speakers": {
@@ -1729,6 +2413,68 @@
         ],
         "title": "MetadataResponse"
       },
+      "RegistryMetrics": {
+        "properties": {
+          "identity_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Accuracy"
+          },
+          "predicted_speaker_count": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted Speaker Count"
+          },
+          "true_speaker_count": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "True Speaker Count"
+          },
+          "unresolved_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Rate"
+          },
+          "mean_match_similarity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Match Similarity"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "RegistryMetrics"
+      },
       "ResumeRequest": {
         "properties": {
           "force_stage": {
@@ -1752,6 +2498,68 @@
         },
         "type": "object",
         "title": "ResumeRequest"
+      },
+      "RougeMetrics": {
+        "properties": {
+          "rouge1_f": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rouge1 F"
+          },
+          "rouge2_f": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rouge2 F"
+          },
+          "rougeL_f": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rougel F"
+          },
+          "rouge1_precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rouge1 Precision"
+          },
+          "rouge1_recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rouge1 Recall"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "RougeMetrics"
       },
       "RunDetail": {
         "properties": {
@@ -2154,6 +2962,12 @@
               }
             ],
             "title": "Error"
+          },
+          "execution": {
+            "type": "integer",
+            "title": "Execution",
+            "description": "Which execution produced this stage",
+            "default": 0
           }
         },
         "type": "object",
@@ -2288,6 +3102,142 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WordErrors": {
+        "properties": {
+          "wer": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wer"
+          },
+          "substitutions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Substitutions"
+          },
+          "deletions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletions"
+          },
+          "insertions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insertions"
+          },
+          "hits": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hits"
+          },
+          "reference_words": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Words"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "WordErrors"
+      },
+      "EndEvent": {
+        "description": "``event: end`` -- no job is active and the run is final; the stream closes.",
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "EndEvent",
+        "type": "object"
+      },
+      "ManifestEvent": {
+        "description": "``event: manifest`` -- sent whenever the run's manifest changes.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageInfo"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "title": "Extra",
+            "type": "object"
+          }
+        },
+        "required": [
+          "status",
+          "stages"
+        ],
+        "title": "ManifestEvent",
+        "type": "object"
+      },
+      "SegmentsEvent": {
+        "description": "``event: segments`` -- tagged segments appended since the last event.\n\n``start_index`` is the index of ``segments[0]`` in the full transcript, so\na client can detect a gap (and refetch) instead of silently mis-appending.",
+        "properties": {
+          "start_index": {
+            "title": "Start Index",
+            "type": "integer"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "start_index",
+          "segments"
+        ],
+        "title": "SegmentsEvent",
+        "type": "object"
       }
     }
   }

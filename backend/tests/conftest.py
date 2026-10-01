@@ -240,7 +240,9 @@ def client(api_env, stub_pipeline):
     from meeting_assistant.api.jobs import JobManager
 
     jobs = JobManager(run_batch=stub_pipeline.run_batch, run_live=stub_pipeline.run_live)
-    app = create_app(jobs=jobs, preload_models=False)
+    # An empty UI directory, so tests never depend on whether the real
+    # frontend has been built.
+    app = create_app(jobs=jobs, preload_models=False, frontend_dist=api_env / "no-ui")
     with TestClient(app, headers={"Authorization": f"Bearer {API_TOKEN}"}) as test_client:
         yield test_client
     if stub_pipeline.gate is not None:

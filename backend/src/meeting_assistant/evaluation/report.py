@@ -158,7 +158,10 @@ def aggregate_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
     compares configurations; this function aggregates across the clips of one
     evaluation pass.
     """
-    families = sorted({key for report in reports for key in report if key != "clip_id"})
+    # ``source`` (which run a clip was scored against) is provenance, not a metric.
+    families = sorted(
+        {key for report in reports for key in report if key not in ("clip_id", "source")}
+    )
     aggregated: dict[str, Any] = {"num_clips": len(reports)}
     for family in families:
         aggregated[family] = _aggregate_leaf([report.get(family) for report in reports])

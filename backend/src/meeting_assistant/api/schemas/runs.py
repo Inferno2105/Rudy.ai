@@ -36,6 +36,7 @@ class StageInfo(BaseModel):
     seconds: float = 0.0
     counts: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+    execution: int = Field(default=0, description="Which execution produced this stage")
 
 
 class Consistency(BaseModel):
@@ -131,6 +132,11 @@ class SpeakerTotals(BaseModel):
 class SpeakersResponse(BaseModel):
     speakers: dict[str, SpeakerStat]
     totals: SpeakerTotals
+
+
+class AudioUrl(BaseModel):
+    url: str = Field(description="Relative URL with a signed, run-scoped ticket")
+    expires_at: int = Field(description="Unix timestamp after which the URL stops working")
 
 
 class MetadataResponse(BaseModel):

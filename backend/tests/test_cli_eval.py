@@ -180,3 +180,25 @@ def test_cmd_eval_passes_over_a_synthetic_run(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 1
     assert "not 'real_audio'" in capsys.readouterr().out
+
+
+def test_cmd_eval_records_which_run_each_clip_was_scored_against(tmp_path, monkeypatch):
+    """Without this a report holds numbers with no trace back to their run."""
+    from meeting_assistant.io_utils import read_json
+
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    _write_reference_clip(tmp_path / "eval" / "references" / "clip01")
+    run = _write_completed_run(tmp_path / "runs", "clip01.wav")
+
+    assert cmd_eval(argparse_namespace()) == 0
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+
+    manifest = RunManifest.load(run)
+    source = report["clips"][0]["source"]
+    assert source["run_id"] == run.run_id
+    assert source["config_hash"] == manifest.provenance_block["config_hash"]
+    assert report["config_hashes"] == [source["config_hash"]]
+    assert "generated_at" in report and "git" in report
+    # Provenance is not a metric family and must not be "averaged".
+    assert "source" not in report["aggregate"]

@@ -31,6 +31,7 @@ from typing import Any
 from fastapi import Request
 
 from meeting_assistant.api.jobs import JobManager
+from meeting_assistant.api.schemas.events import EndEvent, ManifestEvent, SegmentsEvent
 from meeting_assistant.errors import ArtifactError
 from meeting_assistant.io_utils import read_json
 from meeting_assistant.paths import RunPaths
@@ -93,16 +94,12 @@ async def run_events(
             manifest = await asyncio.to_thread(_read, paths.manifest_path)
             if manifest is not None:
                 manifest_mtime = mtime
-                out.append(
-                    _format(
-                        "manifest",
-                        {
-                            "status": manifest.get("status"),
-                            "stages": manifest.get("stages", []),
-                            "extra": manifest.get("extra", {}),
-                        },
-                    )
+                payload = ManifestEvent(
+                    status=manifest.get("status", ""),
+                    stages=manifest.get("stages", []),
+                    extra=manifest.get("extra", {}),
                 )
+                out.append(_format("manifest", payload.model_dump()))
 
         mtime = _mtime(tagged_path)
         if mtime is not None and mtime != tagged_mtime:
@@ -110,12 +107,10 @@ async def run_events(
             if isinstance(segments, list):
                 tagged_mtime = mtime
                 if len(segments) > segments_sent:
-                    out.append(
-                        _format(
-                            "segments",
-                            {"start_index": segments_sent, "segments": segments[segments_sent:]},
-                        )
+                    payload = SegmentsEvent(
+                        start_index=segments_sent, segments=segments[segments_sent:]
                     )
+                    out.append(_format("segments", payload.model_dump()))
                     segments_sent = len(segments)
 
         job = jobs.latest_for_run(paths.run_id)
@@ -134,7 +129,7 @@ async def run_events(
             last_sent = time.monotonic()
 
         if not active:
-            yield _format("end", {"run_id": paths.run_id})
+            yield _format("end", EndEvent(run_id=paths.run_id).model_dump())
             return
 
         await asyncio.sleep(poll_interval)

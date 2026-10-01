@@ -300,6 +300,22 @@ def cmd_batch(args: argparse.Namespace) -> int:
     return 0 if status == "completed" else 1
 
 
+def _clip_source(manifest) -> dict:
+    """Which run a clip was scored against, stored with its numbers.
+
+    Without this the report holds metrics with no record of which run, commit
+    or configuration produced them -- the console output said, but the file
+    that tables and the dashboard are built from did not.
+    """
+    git = manifest.provenance_block.get("git") or {}
+    return {
+        "run_id": manifest.run_id,
+        "git_commit": git.get("commit"),
+        "git_dirty": git.get("dirty"),
+        "config_hash": manifest.provenance_block.get("config_hash"),
+    }
+
+
 def _load_clip_reference(clip_dir):
     """Read one clip's reference bundle from ``data/eval/references/<clip_id>/``.
 
@@ -433,6 +449,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         hypothesis = _load_clip_hypothesis(run)
         reference = _load_clip_reference(clip_dir)
         report = generate_clip_report(clip_id, hypothesis, reference)
+        report["source"] = _clip_source(RunManifest.load(run))
         reports.append(report)
         print(f"  [ ok ] {clip_id}: scored against run {run.run_id}")
 
@@ -440,9 +457,25 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print("\nNo clip had both a labelled reference and a matching run.")
         return 1
 
+    from datetime import datetime
+
+    from meeting_assistant.provenance import git_state
+
+    config_hashes = sorted({r["source"]["config_hash"] for r in reports} - {None})
+    if len(config_hashes) > 1:
+        print(f"\n[warn] the scored runs span {len(config_hashes)} configurations: {config_hashes}")
     aggregated = aggregate_reports(reports)
     output_path = config.EVAL_DIR / "reports" / "latest.json"
-    write_json(output_path, {"clips": reports, "aggregate": aggregated})
+    write_json(
+        output_path,
+        {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "git": git_state(),
+            "config_hashes": config_hashes,
+            "clips": reports,
+            "aggregate": aggregated,
+        },
+    )
 
     print(f"\nScored {len(reports)}/{len(clip_dirs)} clip(s). Report written to {output_path}")
     return 0
@@ -492,6 +525,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
     host = args.host or config.API_HOST
     port = args.port or config.API_PORT
     print(f"Serving on http://{host}:{port}  (docs at /docs)")
+    if (config.FRONTEND_DIST / "index.html").is_file():
+        print(f"Web UI at http://{host}:{port}/")
+    else:
+        print(f"Web UI not built ({config.FRONTEND_DIST}); run `npm run build` in frontend/")
     if host not in ("127.0.0.1", "localhost", "::1"):
         print(
             "Reachable from other machines on this network; every route but "

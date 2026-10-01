@@ -121,3 +121,32 @@ def test_index_rebuild_picks_up_runs_made_outside_the_api(client, api_env):
     result = client.post("/api/index/rebuild").json()
     assert result == {"indexed": 1, "total": 1}
     assert len(client.get("/api/runs").json()) == 1
+
+
+def test_eval_report_is_404_until_one_exists(client):
+    assert client.get("/api/eval/report").status_code == 404
+
+
+def test_eval_report_is_served_typed(client, api_env):
+    report = {
+        "generated_at": "2026-10-01T12:00:00",
+        "git": {"commit": "abc", "dirty": False},
+        "config_hashes": ["108acd72e0ed"],
+        "clips": [
+            {
+                "clip_id": "clip01",
+                "source": {"run_id": "r1", "git_commit": "abc", "config_hash": "108acd72e0ed"},
+                "asr": {"wer_raw": {"wer": 0.21}, "cer_raw": {"cer": 0.08}},
+                "diarization": {"der": 0.18, "confusion": 1.2},
+                "a_future_family": {"x": 1},
+            }
+        ],
+        "aggregate": {"num_clips": 1, "asr": {"wer_raw": {"wer": 0.21}}},
+    }
+    write_json(api_env / "eval" / "reports" / "latest.json", report)
+
+    body = client.get("/api/eval/report").json()
+    assert body["clips"][0]["source"]["run_id"] == "r1"
+    assert body["clips"][0]["asr"]["wer_raw"]["wer"] == 0.21
+    assert body["clips"][0]["a_future_family"] == {"x": 1}
+    assert body["aggregate"]["num_clips"] == 1
