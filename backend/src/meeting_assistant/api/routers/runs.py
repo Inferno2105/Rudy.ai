@@ -1,0 +1,189 @@
+"""Runs: list, inspect, read artifacts, start, resume, and watch progress."""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+from typing import Any, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, StreamingResponse
+
+from meeting_assistant import config
+from meeting_assistant.api.auth import require_token
+from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs, get_run_paths
+from meeting_assistant.api.events import run_events
+from meeting_assistant.api.jobs import BusyError, JobManager
+from meeting_assistant.api.schemas.jobs import BatchRequest, JobAccepted, ResumeRequest
+from meeting_assistant.api.schemas.runs import (
+    ActionItemsResponse,
+    MetadataResponse,
+    RunDetail,
+    RunSummary,
+    SpeakersResponse,
+    SummaryResponse,
+    TranscriptResponse,
+)
+from meeting_assistant.errors import ArtifactError
+from meeting_assistant.io_utils import read_json
+from meeting_assistant.paths import ARTIFACTS, RunPaths
+from meeting_assistant.store import queries
+
+router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(require_token)])
+
+ArtifactName = Literal[tuple(ARTIFACTS)]  # type: ignore[valid-type]
+
+
+def _manifest(paths: RunPaths) -> dict[str, Any]:
+    if not paths.manifest_path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Run {paths.run_id} has no manifest yet")
+    return read_json(paths.manifest_path)
+
+
+def _artifact(paths: RunPaths, name: str) -> Any:
+    if not paths.has(name):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Run {paths.run_id} has no {name} artifact (yet)"
+        )
+    return read_json(paths.artifact(name))
+
+
+@router.get("", response_model=list[RunSummary])
+def list_runs(
+    status_filter: str | None = Query(default=None, alias="status"),
+    mode: str | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Runs from the SQLite index, newest first. Re-indexed automatically when
+    a job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI."""
+    return queries.list_runs(conn, limit=limit, offset=offset, status=status_filter, mode=mode)
+
+
+@router.post("/batch", response_model=JobAccepted, status_code=status.HTTP_202_ACCEPTED)
+def start_batch(body: BatchRequest, jobs: JobManager = Depends(get_jobs)) -> JobAccepted:
+    audio_path = get_audio_file(body.audio)
+    try:
+        job = jobs.submit_batch(audio_path, body)
+    except ArtifactError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return JobAccepted(job_id=job.job_id, run_id=job.run_id)
+
+
+@router.get("/{run_id}", response_model=RunDetail)
+def get_run(
+    paths: RunPaths = Depends(get_run_paths), jobs: JobManager = Depends(get_jobs)
+) -> RunDetail:
+    """One run, read from disk -- the manifest is authoritative, not the index."""
+    manifest = _manifest(paths)
+    return RunDetail(
+        run_id=paths.run_id,
+        mode=manifest.get("mode", ""),
+        status=manifest.get("status", ""),
+        data_origin=manifest.get("data_origin", ""),
+        provenance=manifest.get("provenance", {}),
+        stages=manifest.get("stages", []),
+        extra=manifest.get("extra", {}),
+        artifacts=paths.existing_artifacts(),
+        job=jobs.latest_for_run(paths.run_id),
+    )
+
+
+@router.post("/{run_id}/resume", response_model=JobAccepted, status_code=status.HTTP_202_ACCEPTED)
+def resume_run(
+    body: ResumeRequest,
+    paths: RunPaths = Depends(get_run_paths),
+    jobs: JobManager = Depends(get_jobs),
+) -> JobAccepted:
+    """Run whatever stages have not completed, or re-run from ``force_stage``."""
+    from meeting_assistant.pipeline.stages import STAGES_BY_NAME
+
+    manifest = _manifest(paths)
+    if manifest.get("mode") != "batch":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only batch runs can be resumed")
+    if body.force_stage is not None and body.force_stage not in STAGES_BY_NAME:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Unknown stage {body.force_stage!r}; known: {', '.join(STAGES_BY_NAME)}",
+        )
+    try:
+        job = jobs.submit_resume(paths, force_stage=body.force_stage)
+    except BusyError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return JobAccepted(job_id=job.job_id, run_id=job.run_id)
+
+
+@router.get("/{run_id}/transcript", response_model=TranscriptResponse)
+def get_transcript(paths: RunPaths = Depends(get_run_paths)) -> TranscriptResponse:
+    """The most processed transcript available (hinglish, else tagged, merged,
+    aligned) -- the same choice the summary and statistics stages make."""
+    from meeting_assistant.pipeline.stages import resolve_intel_input
+
+    try:
+        source, segments = resolve_intel_input(paths)
+    except ArtifactError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return TranscriptResponse(source_artifact=source, segments=segments)
+
+
+@router.get("/{run_id}/summary", response_model=SummaryResponse)
+def get_summary(paths: RunPaths = Depends(get_run_paths)) -> Any:
+    return _artifact(paths, "summary")
+
+
+@router.get("/{run_id}/action-items", response_model=ActionItemsResponse)
+def get_action_items(paths: RunPaths = Depends(get_run_paths)) -> Any:
+    return _artifact(paths, "action_items")
+
+
+@router.get("/{run_id}/speakers", response_model=SpeakersResponse)
+def get_speakers(paths: RunPaths = Depends(get_run_paths)) -> Any:
+    return _artifact(paths, "speaker_stats")
+
+
+@router.get("/{run_id}/metadata", response_model=MetadataResponse)
+def get_metadata(paths: RunPaths = Depends(get_run_paths)) -> Any:
+    return _artifact(paths, "metadata")
+
+
+@router.get("/{run_id}/artifacts/{name}")
+def get_raw_artifact(name: ArtifactName, paths: RunPaths = Depends(get_run_paths)) -> Any:
+    """Any artifact, exactly as written -- for debugging and supplementary material."""
+    return _artifact(paths, name)
+
+
+@router.get("/{run_id}/audio", response_class=FileResponse)
+def get_run_audio(paths: RunPaths = Depends(get_run_paths)) -> FileResponse:
+    """The run's source recording, for playback alongside its transcript.
+
+    Served only if the recorded input path resolves inside the audio
+    directory: the path comes from a manifest on disk, and this endpoint must
+    never become a way to read arbitrary files that happen to be named there.
+    """
+    recorded = ((_manifest(paths).get("provenance") or {}).get("input") or {}).get("path")
+    if not recorded:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This run has no single source recording")
+
+    audio_dir = config.AUDIO_DIR.resolve()
+    candidate = Path(recorded)
+    if not candidate.is_absolute():
+        candidate = config.REPO_ROOT / candidate
+    candidate = candidate.resolve()
+    if not candidate.is_relative_to(audio_dir) or not candidate.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Source recording is not available")
+    return FileResponse(candidate)
+
+
+@router.get("/{run_id}/events", response_class=StreamingResponse)
+async def stream_events(
+    request: Request,
+    paths: RunPaths = Depends(get_run_paths),
+    jobs: JobManager = Depends(get_jobs),
+) -> StreamingResponse:
+    """Server-sent progress events; see ``meeting_assistant.api.events``."""
+    return StreamingResponse(
+        run_events(paths, jobs, request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

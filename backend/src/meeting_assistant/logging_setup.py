@@ -51,6 +51,18 @@ def setup_logging(*, verbose: bool = False, quiet: bool = False) -> None:
     _configured = True
 
 
+class _ExcludeApiRecords(logging.Filter):
+    """Keep HTTP request handling out of a run's log.
+
+    The API serves requests on other threads while a job runs, and both log
+    under the package root this handler is attached to -- without this, a
+    run's ``run.log`` would interleave unrelated request logs with its stages.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.name.startswith(f"{_ROOT_LOGGER}.api")
+
+
 def attach_run_log(log_path: str | Path) -> logging.Handler:
     """Tee all DEBUG output into a run's log file. Returns the handler."""
     path = Path(log_path)
@@ -59,6 +71,7 @@ def attach_run_log(log_path: str | Path) -> logging.Handler:
     handler = logging.FileHandler(path, encoding="utf-8")
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(logging.Formatter(_FILE_FORMAT))
+    handler.addFilter(_ExcludeApiRecords())
     logging.getLogger(_ROOT_LOGGER).addHandler(handler)
     return handler
 

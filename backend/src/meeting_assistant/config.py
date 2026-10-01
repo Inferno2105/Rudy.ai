@@ -124,6 +124,23 @@ INDEX_DB_PATH: Path = DATA_DIR / "index.sqlite"
 
 
 # ---------------------------------------------------------------------------
+# HTTP API
+# ---------------------------------------------------------------------------
+# Required whatever the bind address: `serve` refuses to start without it, so
+# whether the API is protected never depends on how it happened to be launched.
+API_TOKEN: str | None = os.environ.get("API_TOKEN") or None
+API_TOKEN_MIN_LENGTH = 32
+API_HOST: str = os.environ.get("API_HOST", "127.0.0.1")
+API_PORT: int = int(os.environ.get("API_PORT", "8000"))
+API_CORS_ORIGINS: list[str] = [
+    origin.strip()
+    for origin in os.environ.get("API_CORS_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+API_MAX_UPLOAD_MB: int = int(os.environ.get("API_MAX_UPLOAD_MB", "500"))
+
+
+# ---------------------------------------------------------------------------
 # FFmpeg discovery (Windows / TorchCodec)
 # ---------------------------------------------------------------------------
 def _dir_has_ffmpeg_dlls(directory: str | Path) -> bool:
@@ -194,6 +211,7 @@ def list_problems(
     require_hf_token: bool = True,
     require_ffmpeg: bool = True,
     require_ollama: bool = False,
+    require_api_token: bool = False,
 ) -> list[str]:
     """Check prerequisites and return every problem found, without raising.
 
@@ -246,6 +264,13 @@ def list_problems(
                 f"server and run `ollama pull {OLLAMA_MODEL}`."
             )
 
+    if require_api_token and (not API_TOKEN or len(API_TOKEN) < API_TOKEN_MIN_LENGTH):
+        problems.append(
+            f"API_TOKEN is missing or shorter than {API_TOKEN_MIN_LENGTH} characters. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+            "and add API_TOKEN=... to .env"
+        )
+
     return problems
 
 
@@ -254,6 +279,7 @@ def validate_config(
     require_hf_token: bool = True,
     require_ffmpeg: bool = True,
     require_ollama: bool = False,
+    require_api_token: bool = False,
 ) -> None:
     """Check prerequisites and raise one aggregated error listing every problem.
 
@@ -273,6 +299,7 @@ def validate_config(
         require_hf_token=require_hf_token,
         require_ffmpeg=require_ffmpeg,
         require_ollama=require_ollama,
+        require_api_token=require_api_token,
     )
     if problems:
         raise ConfigError(

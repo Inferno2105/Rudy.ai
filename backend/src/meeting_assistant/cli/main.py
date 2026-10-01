@@ -105,6 +105,22 @@ def _check_ollama() -> Check:
     )
 
 
+def _check_api_token() -> Check:
+    problems = config.list_problems(
+        require_hf_token=False, require_ffmpeg=False, require_api_token=True
+    )
+    if not problems:
+        return Check("API token", OK, f"set ({len(config.API_TOKEN)} chars)")
+    # WARN, not FAIL: only `serve` needs it; the CLI pipeline runs without one.
+    return Check(
+        "API token",
+        WARN,
+        "not set or too short (needed only for `meeting-assistant serve`)",
+        "python -c \"import secrets; print(secrets.token_urlsafe(32))\"   then add "
+        "API_TOKEN=... to .env",
+    )
+
+
 def _check_imports() -> list[Check]:
     """Import the heavy dependencies, in an order that respects the DLL bootstrap.
 
@@ -163,7 +179,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"meeting-assistant {__version__}")
     print(f"repo root: {config.REPO_ROOT}\n")
 
-    checks = [_check_python(), _check_env_file(), _check_hf_token(), _check_ffmpeg()]
+    checks = [
+        _check_python(),
+        _check_env_file(),
+        _check_hf_token(),
+        _check_ffmpeg(),
+        _check_api_token(),
+    ]
     if not args.quick:
         checks.extend(_check_imports())
         checks.append(_check_ollama())
@@ -435,6 +457,54 @@ def cmd_live(args: argparse.Namespace) -> int:
     return 0 if status in ("completed", "partial") else 1
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Run the HTTP API. Refuses to start without a usable API token."""
+    from meeting_assistant.errors import ConfigError
+
+    try:
+        config.validate_config(
+            require_hf_token=False, require_ffmpeg=False, require_api_token=True
+        )
+    except ConfigError as exc:
+        print(f"Refusing to start the API: {exc}", file=sys.stderr)
+        return 1
+
+    import uvicorn
+
+    host = args.host or config.API_HOST
+    port = args.port or config.API_PORT
+    print(f"Serving on http://{host}:{port}  (docs at /docs)")
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(
+            "Reachable from other machines on this network; every route but "
+            "/api/health requires the API token."
+        )
+    uvicorn.run(
+        "meeting_assistant.api.app:create_app",
+        factory=True,
+        host=host,
+        port=port,
+        log_level="warning" if args.quiet else "info",
+    )
+    return 0
+
+
+def cmd_openapi(args: argparse.Namespace) -> int:
+    """Write the OpenAPI schema, from which the frontend's typed client is generated."""
+    import json
+    from pathlib import Path
+
+    from meeting_assistant.api.app import create_app
+    from meeting_assistant.io_utils import write_text
+
+    default = config.REPO_ROOT / "frontend" / "src" / "api" / "openapi.json"
+    out = Path(args.out) if args.out else default
+    schema = create_app(preload_models=False).openapi()
+    write_text(out, json.dumps(schema, indent=2, ensure_ascii=False) + "\n")
+    print(f"Wrote OpenAPI schema ({len(schema['paths'])} paths) to {out}")
+    return 0
+
+
 def cmd_reindex(args: argparse.Namespace) -> int:  # noqa: ARG001 -- argparse namespace, currently no flags used
     """Rebuild the SQLite index from every run directory on disk."""
     from meeting_assistant import paths as paths_mod
@@ -520,6 +590,17 @@ def build_parser() -> argparse.ArgumentParser:
         "eval", help="score labelled clips under data/eval/references/ against their runs"
     )
     eval_parser.set_defaults(func=cmd_eval)
+
+    serve = subparsers.add_parser("serve", help="run the HTTP API (needs API_TOKEN in .env)")
+    serve.add_argument("--host", help=f"bind address (default {config.API_HOST})")
+    serve.add_argument("--port", type=int, help=f"port (default {config.API_PORT})")
+    serve.set_defaults(func=cmd_serve)
+
+    openapi = subparsers.add_parser("openapi", help="write the API's OpenAPI schema")
+    openapi.add_argument(
+        "--out", metavar="PATH", help="output file (default frontend/src/api/openapi.json)"
+    )
+    openapi.set_defaults(func=cmd_openapi)
 
     reindex = subparsers.add_parser("reindex", help="rebuild the SQLite index from disk")
     reindex.set_defaults(func=cmd_reindex)

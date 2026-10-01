@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 
@@ -89,3 +90,133 @@ def test_sha256_handles_file_larger_than_one_chunk(tmp_path):
     target = tmp_path / "big.bin"
     target.write_bytes(b"\x01" * (3 * (1 << 20) + 17))
     assert len(sha256_file(target)) == 64
+
+
+# ---------------------------------------------------------------------------
+# Atomic replace while the target is being read (the HTTP API's situation)
+# ---------------------------------------------------------------------------
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows file semantics")
+
+
+def test_replace_retries_a_transient_permission_error(tmp_path, monkeypatch):
+    """A reader that did not allow deletion blocks even a POSIX-semantics
+    rename briefly; the write must wait it out rather than fail the stage."""
+    from meeting_assistant import io_utils
+
+    monkeypatch.setattr(io_utils.sys, "platform", "win32")
+    monkeypatch.setattr(io_utils, "_REPLACE_FIRST_DELAY_SEC", 0.0)
+    real_once = io_utils._replace_once
+    failures = iter([PermissionError(13, "sharing violation")] * 2)
+
+    def flaky_once(src, dst):
+        error = next(failures, None)
+        if error is not None:
+            raise error
+        real_once(src, dst)
+
+    monkeypatch.setattr(io_utils, "_replace_once", flaky_once)
+    write_json(tmp_path / "m.json", {"ok": True})
+    assert read_json(tmp_path / "m.json") == {"ok": True}
+
+
+def test_replace_gives_up_after_bounded_retries(tmp_path, monkeypatch):
+    from meeting_assistant import io_utils
+
+    monkeypatch.setattr(io_utils.sys, "platform", "win32")
+    monkeypatch.setattr(io_utils, "_REPLACE_FIRST_DELAY_SEC", 0.0)
+    calls = []
+
+    def always_denied(src, dst):
+        calls.append(1)
+        raise PermissionError(13, "sharing violation")
+
+    monkeypatch.setattr(io_utils, "_replace_once", always_denied)
+    with pytest.raises(PermissionError):
+        write_json(tmp_path / "m.json", {"ok": True})
+    assert len(calls) == io_utils._REPLACE_ATTEMPTS
+
+
+def test_replace_does_not_retry_off_windows(tmp_path, monkeypatch):
+    """Elsewhere PermissionError means a real permissions problem, not a
+    reader holding the file -- retrying would only delay the error."""
+    from meeting_assistant import io_utils
+
+    calls = []
+    monkeypatch.setattr(io_utils.sys, "platform", "linux")
+
+    def denied(src, dst):
+        calls.append(1)
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(io_utils, "_replace_once", denied)
+    with pytest.raises(PermissionError):
+        write_json(tmp_path / "m.json", {"ok": True})
+    assert calls == [1]
+
+
+@windows_only
+def test_replace_succeeds_while_a_shared_reader_holds_the_file_open(tmp_path):
+    """The core property: a reader mid-read never blocks the writer, and keeps
+    seeing the complete old version (never a mixture)."""
+    from meeting_assistant.io_utils import _open_for_read
+
+    target = tmp_path / "manifest.json"
+    write_json(target, {"v": 0})
+    with _open_for_read(target) as held:
+        write_json(target, {"v": 1})
+        assert json.load(held) == {"v": 0}
+    assert read_json(target) == {"v": 1}
+
+
+@windows_only
+def test_falls_back_to_os_replace_on_a_filesystem_without_posix_rename(
+    tmp_path, monkeypatch
+):
+    from meeting_assistant import _win_fileio, io_utils
+
+    def unsupported(src, dst):
+        raise OSError(None, "not supported", str(dst), 50)
+
+    monkeypatch.setattr(_win_fileio, "posix_replace", unsupported)
+    monkeypatch.setattr(io_utils, "_posix_replace_supported", True)
+
+    write_json(tmp_path / "m.json", {"ok": True})
+
+    assert read_json(tmp_path / "m.json") == {"ok": True}
+    assert io_utils._posix_replace_supported is False  # remembered for the process
+
+
+def test_concurrent_readers_never_break_writes(tmp_path):
+    """The real scenario, made adversarial: three threads re-reading a
+    manifest in a tight loop while it is rewritten 300 times. Every write must
+    land, and no read may ever see a partial file."""
+    import threading
+
+    target = tmp_path / "manifest.json"
+    write_json(target, {"n": 0})
+    stop = threading.Event()
+    bad_reads: list[object] = []
+
+    def reader():
+        while not stop.is_set():
+            try:
+                data = read_json(target)
+            except ArtifactError as exc:
+                bad_reads.append(exc)
+            else:
+                if set(data) != {"n"}:
+                    bad_reads.append(data)
+
+    threads = [threading.Thread(target=reader, daemon=True) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    try:
+        for n in range(1, 300):
+            write_json(target, {"n": n})
+    finally:
+        stop.set()
+        for thread in threads:
+            thread.join()
+
+    assert read_json(target) == {"n": 299}
+    assert bad_reads == []

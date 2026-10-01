@@ -38,17 +38,19 @@ eval = [
     "matplotlib>=3.9",
     "pyyaml>=6.0",             # declarative experiment configs
 ]
-# HTTP layer consumed by the React frontend (built in a later phase).
+# HTTP layer consumed by the React frontend. No migration tool: the schema is
+# CREATE ... IF NOT EXISTS and fully rebuildable from disk (`reindex`), so one
+# is added only when a real migration exists.
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.12",  # audio upload
-    "alembic>=1.13",             # SQLite schema migrations
 ]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.6",
+    "httpx>=0.27",  # FastAPI's TestClient
 ]
 
 [project.scripts]
@@ -80,6 +82,17 @@ select = ["E", "F", "W", "I", "UP", "B"]
 # exact text a prompt version constant is supposed to pin. See
 # meeting_assistant/llm/prompts.py's module docstring.
 "src/meeting_assistant/llm/prompts.py" = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies and parameters as default-argument calls; they
+# are evaluated per request by the framework, not once at definition time.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.File",
+    "fastapi.Header",
+    "fastapi.Body",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

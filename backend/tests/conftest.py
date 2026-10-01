@@ -11,6 +11,7 @@ model is marked ``slow`` or ``integration`` and excluded by default.
 from __future__ import annotations
 
 import json
+import threading
 import wave
 from pathlib import Path
 
@@ -136,3 +137,138 @@ def fake_llm():
         return client, transport
 
     return build
+
+
+# ---------------------------------------------------------------------------
+# HTTP API
+# ---------------------------------------------------------------------------
+API_TOKEN = "test-token-" + "x" * 32
+
+
+class StubPipeline:
+    """Stand-in for ``run_batch``/``run_live`` behind the API's JobManager.
+
+    Writes a manifest stage and a couple of artifacts the way a real run
+    would, without loading a model. ``gate`` lets a test hold a batch job in
+    ``running`` to observe queueing; ``fail`` makes the next job raise.
+    """
+
+    def __init__(self):
+        self.batch_calls: list = []
+        self.live_calls: list = []
+        self.gate: threading.Event | None = None
+        self.fail = False
+
+    def run_batch(self, audio_path, opts):
+        from meeting_assistant.io_utils import write_json
+        from meeting_assistant.paths import open_run
+        from meeting_assistant.pipeline.manifest import RunManifest
+
+        self.batch_calls.append(opts)
+        if self.gate is not None:
+            self.gate.wait(timeout=10)
+        if self.fail:
+            raise RuntimeError("stub pipeline failed")
+
+        paths = open_run(opts.resume_run_id)
+        manifest = RunManifest.load(paths)
+        write_json(
+            paths.artifact("tagged"),
+            [
+                {"start": 0.0, "end": 2.0, "speaker": "SPEAKER_00", "text": "namaste",
+                 "language": "Hindi"},
+                {"start": 2.0, "end": 4.0, "speaker": "SPEAKER_01", "text": "hello",
+                 "language": "English"},
+            ],
+        )
+        write_json(
+            paths.artifact("summary"),
+            {"summary": "A greeting.", "highlights": ["hello"], "key_decisions": []},
+        )
+        manifest.record_stage("tagged", "ok", seconds=0.1, counts={"segments": 2})
+        manifest.record_stage("summary", "ok", seconds=0.1)
+        manifest.set_status("completed")
+        return paths
+
+    def run_live(self, opts, *, paths, stop_event):
+        from meeting_assistant.io_utils import write_json
+        from meeting_assistant.pipeline.manifest import RunManifest
+
+        self.live_calls.append(opts)
+        segments = []
+        # One "chunk" every 50 ms until stopped, the way the real worker
+        # re-dumps the stitched transcript after each chunk.
+        while not stop_event.wait(timeout=0.05):
+            segments.append(
+                {"start": float(len(segments)), "end": len(segments) + 1.0,
+                 "speaker": "SPEAKER_G01", "text": f"chunk {len(segments)}"}
+            )
+            write_json(paths.artifact("tagged"), segments)
+            if len(segments) >= 200:
+                break
+        manifest = RunManifest.load(paths)
+        manifest.set_extra("live_stats", {"chunks_recorded": len(segments)})
+        manifest.set_status("completed")
+        return paths
+
+
+@pytest.fixture
+def api_env(tmp_path, monkeypatch):
+    """Point every data location at tmp_path and set a known API token."""
+    from meeting_assistant import config
+
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    monkeypatch.setattr(config, "AUDIO_DIR", tmp_path / "audio")
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "INDEX_DB_PATH", tmp_path / "index.sqlite")
+    monkeypatch.setattr(config, "API_TOKEN", API_TOKEN)
+    (tmp_path / "audio").mkdir()
+    return tmp_path
+
+
+@pytest.fixture
+def stub_pipeline():
+    return StubPipeline()
+
+
+@pytest.fixture
+def client(api_env, stub_pipeline):
+    """An authenticated TestClient over an app whose jobs run the stub pipeline."""
+    from fastapi.testclient import TestClient
+
+    from meeting_assistant.api.app import create_app
+    from meeting_assistant.api.jobs import JobManager
+
+    jobs = JobManager(run_batch=stub_pipeline.run_batch, run_live=stub_pipeline.run_live)
+    app = create_app(jobs=jobs, preload_models=False)
+    with TestClient(app, headers={"Authorization": f"Bearer {API_TOKEN}"}) as test_client:
+        yield test_client
+    if stub_pipeline.gate is not None:
+        stub_pipeline.gate.set()
+
+
+@pytest.fixture
+def audio_file(api_env):
+    """A short real WAV in the patched audio directory."""
+    import numpy as np
+
+    from meeting_assistant.audio.wav_io import save_wav
+
+    return save_wav(api_env / "audio" / "meeting.wav", np.zeros(16000, dtype=np.int16), 16000)
+
+
+@pytest.fixture
+def wait_for_job(client):
+    """Poll a run until its job reaches one of ``states``; return the run detail."""
+    import time
+
+    def wait(run_id, *, states=("finished", "failed"), timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            detail = client.get(f"/api/runs/{run_id}").json()
+            if detail.get("job") and detail["job"]["state"] in states:
+                return detail
+            time.sleep(0.02)
+        raise AssertionError(f"job for {run_id} never reached {states}")
+
+    return wait

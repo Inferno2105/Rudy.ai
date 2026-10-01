@@ -128,6 +128,26 @@ def _final_status(manifest: RunManifest, selected: list[StageSpec], aborted: boo
     return STATUS_COMPLETED if statuses == {STAGE_OK} else STATUS_PARTIAL
 
 
+def create_batch_run(audio_path: str | Path) -> RunPaths:
+    """Create a run directory and its initial manifest, without running anything.
+
+    Split out so a caller that must hand back a ``run_id`` before the
+    (minutes-long) work starts -- the HTTP API -- can create the run, return
+    immediately, and execute it later via ``run_batch`` with ``resume_run_id``:
+    a resume with no completed stages runs every stage, so there is no second
+    code path to keep in step with this one.
+
+    Raises:
+        ArtifactError: the audio file does not exist.
+    """
+    audio_path = Path(audio_path)
+    if not audio_path.exists():
+        raise ArtifactError(f"Audio file not found: {audio_path}")
+    paths = new_run("batch", audio_path)
+    RunManifest.start(paths, mode="batch", audio_path=str(audio_path))
+    return paths
+
+
 def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -> RunPaths:
     """Run the batch pipeline over one audio file, or resume an existing run.
 
@@ -161,10 +181,10 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
             recorded = (manifest.provenance_block.get("input") or {}).get("path")
             audio_path = Path(recorded) if recorded else None
     else:
-        if audio_path is None or not audio_path.exists():
-            raise ArtifactError(f"Audio file not found: {audio_path}")
-        paths = new_run("batch", audio_path)
-        manifest = RunManifest.start(paths, mode="batch", audio_path=str(audio_path))
+        if audio_path is None:
+            raise ArtifactError("Audio file not found: None")
+        paths = create_batch_run(audio_path)
+        manifest = RunManifest.load(paths)
 
     log.info("Run %s (%s)", paths.run_id, "resumed" if opts.resume_run_id else "started")
     log_handler = attach_run_log(paths.log_path)

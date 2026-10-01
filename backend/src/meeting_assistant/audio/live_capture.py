@@ -19,8 +19,9 @@ processing took and silently dropped whatever was said during that window.
 from __future__ import annotations
 
 import collections
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,23 @@ from meeting_assistant.logging_setup import get_logger
 log = get_logger(__name__)
 
 OnChunkReady = Callable[[Path, float], None]
+FrameSource = Callable[[VadConfig, int | None], Iterator[np.ndarray]]
+
+
+def microphone_frames(vad_config: VadConfig, device: int | None) -> Iterator[np.ndarray]:
+    """Yield mono int16 frames of ``vad_config.frame_size`` samples from a mic."""
+    import sounddevice as sd
+
+    with sd.InputStream(
+        samplerate=vad_config.sample_rate,
+        channels=1,
+        dtype="int16",
+        blocksize=vad_config.frame_size,
+        device=device,
+    ) as stream:
+        while True:
+            frame, _ = stream.read(vad_config.frame_size)
+            yield frame[:, 0]
 
 
 @dataclass
@@ -60,12 +78,17 @@ def record_chunks(
     *,
     vad_config: VadConfig = DEFAULT_VAD_CONFIG,
     device: int | None = None,
+    stop_event: threading.Event | None = None,
+    frame_source: FrameSource = microphone_frames,
 ) -> RecordingStats:
     """Record from the microphone, cutting a chunk at each natural pause.
 
-    Runs until interrupted (Ctrl+C). The interrupt is caught here so any
-    in-progress chunk can be flushed before returning, rather than discarding
-    whatever was being said at the moment the user chose to stop.
+    Runs until interrupted (Ctrl+C) or until ``stop_event`` is set -- the
+    latter is how the HTTP API stops a recording, since it has no terminal to
+    send Ctrl+C from. Either way any in-progress chunk is flushed before
+    returning, rather than discarding whatever was being said at the moment
+    the user chose to stop. The event is checked once per frame (30 ms), so
+    stopping is effectively immediate.
 
     Args:
         on_chunk_ready: called as ``(chunk_path, offset_sec)`` once a chunk is
@@ -82,12 +105,14 @@ def record_chunks(
             project-wide default to fall back to.
         device: ``sounddevice`` input device index, or ``None`` for the system
             default.
+        stop_event: when set, recording stops at the next frame.
+        frame_source: where frames come from. The microphone by default;
+            injectable so the chunking and stop logic can be tested without
+            audio hardware.
 
     Returns:
         Counts for the session, for inclusion in the run manifest.
     """
-    import sounddevice as sd
-
     chunk_dir = Path(chunk_dir)
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
@@ -102,23 +127,13 @@ def record_chunks(
     recording_start = time.time()
     chunk_index = 0
     chunk_start_time = 0.0
+    frames_seen = 0
+    frame_sec = vad_config.frame_duration_ms / 1000
 
     log.info(
         "Listening (device=%s)... Ctrl+C to stop.",
         device if device is not None else "default",
     )
-
-    def frames():
-        with sd.InputStream(
-            samplerate=vad_config.sample_rate,
-            channels=1,
-            dtype="int16",
-            blocksize=vad_config.frame_size,
-            device=device,
-        ) as stream:
-            while True:
-                frame, _ = stream.read(vad_config.frame_size)
-                yield frame[:, 0]  # mono
 
     def flush_chunk(pending_frames: list[np.ndarray]) -> None:
         nonlocal chunk_index
@@ -138,8 +153,13 @@ def record_chunks(
         log.info("Saved chunk %d (%.1fs) -> %s", chunk_index, duration, chunk_path)
         on_chunk_ready(chunk_path, chunk_start_time)
 
+    frames = frame_source(vad_config, device)
     try:
-        for frame in frames():
+        for frame in frames:
+            if stop_event is not None and stop_event.is_set():
+                log.info("Stop requested.")
+                break
+            frames_seen += 1
             speech = is_speech(vad, frame.tobytes(), vad_config)
 
             if not triggered:
@@ -150,7 +170,11 @@ def record_chunks(
                 # onset of speech is not clipped.
                 if voiced > 0.5 * ring_buffer.maxlen:
                     triggered = True
-                    chunk_start_time = time.time() - recording_start
+                    # Offset from the audio itself, counted back to the first
+                    # buffered frame -- the chunk's audio starts there, not at
+                    # the trigger instant. A wall-clock reading taken here
+                    # placed every chunk late by the pre-roll's length.
+                    chunk_start_time = (frames_seen - len(ring_buffer)) * frame_sec
                     current_chunk_frames = [f for f, _ in ring_buffer]
                     ring_buffer.clear()
             else:
@@ -170,8 +194,15 @@ def record_chunks(
 
     except KeyboardInterrupt:
         log.info("Stopped listening.")
-        if current_chunk_frames:
-            flush_chunk(current_chunk_frames)
+    finally:
+        # Closes the microphone stream: breaking out of the loop leaves the
+        # generator suspended inside its `with sd.InputStream(...)` block.
+        close = getattr(frames, "close", None)
+        if close is not None:
+            close()
+
+    if current_chunk_frames:
+        flush_chunk(current_chunk_frames)
 
     stats.session_duration_sec = time.time() - recording_start
     return stats

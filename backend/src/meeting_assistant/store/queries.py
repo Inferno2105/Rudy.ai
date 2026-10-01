@@ -1,9 +1,7 @@
 """Read-only queries over the run index.
 
-Kept minimal for now — just enough for the CLI. Richer queries (filtering by
-speaker, date range, language mix; full-text search over segments) are added
-alongside the API layer that will actually need them, rather than speculatively
-now.
+Only the filters the CLI and API actually use. Searching by speaker, language
+mix or segment text is added when a screen needs it, not speculatively.
 """
 
 from __future__ import annotations
@@ -12,15 +10,32 @@ import sqlite3
 from typing import Any
 
 
-def list_runs(conn: sqlite3.Connection, *, limit: int | None = None) -> list[dict[str, Any]]:
-    """All indexed runs, newest first."""
-    sql = "SELECT * FROM runs ORDER BY created_at DESC"
+def list_runs(
+    conn: sqlite3.Connection,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+    status: str | None = None,
+    mode: str | None = None,
+) -> list[dict[str, Any]]:
+    """Indexed runs, newest first, optionally filtered by status and mode."""
+    clauses: list[str] = []
+    params: list[Any] = []
+    if status is not None:
+        clauses.append("status = ?")
+        params.append(status)
+    if mode is not None:
+        clauses.append("mode = ?")
+        params.append(mode)
+
+    sql = "SELECT * FROM runs"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY created_at DESC"
     if limit is not None:
-        sql += " LIMIT ?"
-        rows = conn.execute(sql, (limit,)).fetchall()
-    else:
-        rows = conn.execute(sql).fetchall()
-    return [dict(row) for row in rows]
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+    return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
 
 def get_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any] | None:

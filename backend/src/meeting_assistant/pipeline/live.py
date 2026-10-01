@@ -268,14 +268,34 @@ def _run_tail_stages(ctx: StageContext, manifest: RunManifest, paths: RunPaths) 
             log.info("Completed stage %s in %.1fs", stage.name, elapsed)
 
 
-def run_live(opts: LiveOptions | None = None) -> RunPaths:
+def create_live_run() -> RunPaths:
+    """Create a live run directory and its initial manifest, without recording.
+
+    Lets the HTTP API return a ``run_id`` before the recording thread starts.
+    """
+    paths = new_run("live")
+    RunManifest.start(paths, mode="live")
+    return paths
+
+
+def run_live(
+    opts: LiveOptions | None = None,
+    *,
+    paths: RunPaths | None = None,
+    stop_event: threading.Event | None = None,
+) -> RunPaths:
     """Record from the microphone and process it incrementally until stopped.
 
-    Runs until interrupted with Ctrl+C. A second Ctrl+C while queued chunks are
-    still draining abandons whatever has not yet been processed rather than
-    waiting indefinitely -- the transcript up to that point has already been
-    saved (every chunk re-dumps it atomically), so nothing already processed
-    is lost, only whatever was still queued.
+    Runs until interrupted with Ctrl+C, or until ``stop_event`` is set (how the
+    HTTP API stops it). A second Ctrl+C while queued chunks are still draining
+    abandons whatever has not yet been processed rather than waiting
+    indefinitely -- the transcript up to that point has already been saved
+    (every chunk re-dumps it atomically), so nothing already processed is
+    lost, only whatever was still queued.
+
+    Args:
+        paths: an existing run from :func:`create_live_run`; a new one is
+            created when omitted.
 
     Returns:
         The run's :class:`~meeting_assistant.paths.RunPaths`. Check
@@ -290,8 +310,8 @@ def run_live(opts: LiveOptions | None = None) -> RunPaths:
     opts = opts or LiveOptions()
     config.validate_config(require_hf_token=True, require_ffmpeg=True, require_ollama=False)
 
-    paths = new_run("live")
-    manifest = RunManifest.start(paths, mode="live")
+    paths = paths or create_live_run()
+    manifest = RunManifest.load(paths)
     log.info("Run %s started", paths.run_id)
     log_handler = attach_run_log(paths.log_path)
 
@@ -339,7 +359,11 @@ def run_live(opts: LiveOptions | None = None) -> RunPaths:
             q.put((chunk_path, offset_sec))
 
         recording = record_chunks(
-            enqueue, paths.chunks_dir, vad_config=opts.vad_config, device=opts.device
+            enqueue,
+            paths.chunks_dir,
+            vad_config=opts.vad_config,
+            device=opts.device,
+            stop_event=stop_event,
         )
 
         q.put(_STOP)
@@ -373,6 +397,14 @@ def run_live(opts: LiveOptions | None = None) -> RunPaths:
         statuses = {manifest.stage_status(name) for name in _TAIL_STAGES}
         manifest.set_status(STATUS_COMPLETED if statuses == {STAGE_OK} else STATUS_PARTIAL)
         log.info("Run %s finished: %s", paths.run_id, manifest.status)
+
+    except Exception as exc:
+        # E.g. a model failed to load before recording started. Without this
+        # the manifest would sit at its initial "partial" forever, which reads
+        # as "interrupted, resumable" rather than "never worked".
+        manifest.set_extra("error", f"{type(exc).__name__}: {exc}")
+        manifest.set_status(STATUS_FAILED)
+        raise
 
     finally:
         detach_run_log(log_handler)
