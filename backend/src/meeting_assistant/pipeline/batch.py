@@ -186,8 +186,13 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
         paths = open_run(opts.resume_run_id)
         manifest = RunManifest.load(paths)
         if audio_path is None:
-            recorded = (manifest.provenance_block.get("input") or {}).get("path")
-            audio_path = Path(recorded) if recorded else None
+            from meeting_assistant.audio.locate import locate_recording
+
+            recorded = manifest.provenance_block.get("input") or {}
+            audio_path = (
+                locate_recording(recorded.get("path"), recorded.get("sha256"))
+                or (Path(recorded["path"]) if recorded.get("path") else None)
+            )
         manifest.check_resumable(
             audio_path=audio_path,
             force_stage=opts.force_stage,

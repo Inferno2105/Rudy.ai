@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 
-from meeting_assistant import accounts, config
+from meeting_assistant import accounts
 from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs, get_run_paths
 from meeting_assistant.api.events import run_events
@@ -204,20 +204,19 @@ def _source_audio(paths: RunPaths) -> Path:
     """The run's recording, only if it resolves inside the audio directory.
 
     The path comes from a manifest on disk, and serving it must never become a
-    way to read arbitrary files that happen to be named there.
+    way to read arbitrary files that happen to be named there. A run made on
+    another machine (natively vs in Docker) is found by its place in the audio
+    folder, if the file there is byte-for-byte the one it recorded.
     """
-    recorded = ((_manifest(paths).get("provenance") or {}).get("input") or {}).get("path")
-    if not recorded:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "This run has no single source recording")
+    from meeting_assistant.audio.locate import locate_recording
 
-    audio_dir = config.AUDIO_DIR.resolve()
-    candidate = Path(recorded)
-    if not candidate.is_absolute():
-        candidate = config.REPO_ROOT / candidate
-    candidate = candidate.resolve()
-    if not candidate.is_relative_to(audio_dir) or not candidate.is_file():
+    recorded = (_manifest(paths).get("provenance") or {}).get("input") or {}
+    if not recorded.get("path"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This run has no single source recording")
+    found = locate_recording(recorded.get("path"), recorded.get("sha256"))
+    if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Source recording is not available")
-    return candidate
+    return found
 
 
 @router.get("/{run_id}/audio", response_class=FileResponse)
