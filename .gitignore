@@ -70,6 +70,14 @@ data/screenshots/
 paper/**/*.aux
 paper/**/*.log
 paper/**/*.out
+# LaTeX build outputs (the PDF is built from source, not committed)
+paper/*.pdf
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
+paper/page-*.png
 
 # ---------------------------------------------------------------
 # Editors / OS

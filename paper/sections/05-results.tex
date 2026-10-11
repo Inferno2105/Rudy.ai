@@ -1,0 +1,82 @@
+\section{Results}
+\label{sec:results}
+
+% Every number in this section comes from tables/ and figures/, which
+% `meeting-assistant paper build` regenerates from stored runs. Prose that
+% quotes a number must quote the generated table, never a value typed by hand.
+
+\pending{One-paragraph overview of the headline results, written after the
+tables exist.}
+
+\subsection{Recognition}
+Table~\ref{tab:asr} reports \werraw{}, \werrom{} and \cerraw{} per condition.
+\pending{Gap between \werraw{} and \werrom{} (how much of the raw error is script
+mismatch); Hindi-dominant vs English-dominant; effect of noise.}
+
+\begin{table}[t]
+\centering
+\caption{Recognition error rates (\%, mean and 95\,\% CI).}
+\label{tab:asr}
+\resulttable{asr}{WER$_{\mathrm{raw}}$, WER$_{\mathrm{rom}}$, CER$_{\mathrm{raw}}$ by condition}
+\end{table}
+
+\subsection{Diarization and speaker identity}
+\pending{DER and its components (Table~\ref{tab:der}); cross-chunk identity
+accuracy against the threshold $\theta$ (Fig.~\ref{fig:threshold}).}
+
+\begin{table}[t]
+\centering
+\caption{Diarization error rate and its components (\%).}
+\label{tab:der}
+\resulttable{der}{DER, missed speech, false alarm, confusion}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\resultfigure{registry_threshold}{identity accuracy and speaker-count error vs $\theta$}
+\caption{Speaker identity across live chunks as the match threshold varies.}
+\label{fig:threshold}
+\end{figure}
+
+\subsection{Language identification}
+\pending{Accuracy, per-class $F_1$ and confusion (Table~\ref{tab:langid});
+inter-annotator $\kappa$; errors on Romanized Hindi.}
+
+\begin{table}[t]
+\centering
+\caption{Language identification against annotated tags.}
+\label{tab:langid}
+\resulttable{langid}{accuracy, per-class P/R/F1, Cohen's kappa}
+\end{table}
+
+\subsection{Summaries and action items}
+\pending{ROUGE and human ratings; action-item precision, recall and $F_1$; effect
+of normalization on both (Table~\ref{tab:intel}).}
+
+\begin{table}[t]
+\centering
+\caption{Summary and action-item quality.}
+\label{tab:intel}
+\resulttable{intel}{ROUGE-1/2/L, human ratings, action-item P/R/F1}
+\end{table}
+
+\subsection{Ablations}
+\pending{Effect of each ablation relative to the default (Table~\ref{tab:ablation_results}).}
+
+\begin{table*}[t]
+\centering
+\caption{Ablation results (paired differences from the default, 95\,\% CI).}
+\label{tab:ablation_results}
+\resulttable{ablations}{one row per ablation, all metric families}
+\end{table*}
+
+\subsection{Efficiency}
+\pending{Per-stage time and real-time factor on CPU and GPU
+(Table~\ref{tab:efficiency}); live-mode backlog and latency.}
+
+\begin{table}[t]
+\centering
+\caption{Processing time per stage and real-time factor.}
+\label{tab:efficiency}
+\resulttable{efficiency}{seconds and RTF per stage, CPU vs GPU}
+\end{table}

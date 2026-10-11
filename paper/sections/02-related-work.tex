@@ -1,0 +1,45 @@
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Code-switched speech recognition}
+Sitaram et al.~\cite{sitaram2019survey} survey code-switched speech and language
+processing and identify the scarcity of transcribed code-mixed speech and the
+inconsistency of its written form as the central obstacles. The MUCS~2021
+challenge~\cite{diwan2021mucs} established benchmarks for Hindi--English and
+Bengali--English code-switched recognition and noted the need to normalize
+script before scoring. Large weakly supervised models such as
+Whisper~\cite{radford2023whisper} recognize Hindi and English without
+task-specific training, but their output script for Hindi is not controlled,
+which our evaluation protocol addresses explicitly.
+
+\paragraph{Long-form transcription and diarization}
+pyannote.audio~\cite{bredin2020pyannote} provides neural building blocks for
+speaker diarization; its current pipeline combines powerset segmentation
+\cite{plaquet2023powerset} with speaker embeddings~\cite{wang2023wespeaker} and
+clustering~\cite{bredin2023pyannote21}. WhisperX~\cite{bain2023whisperx} couples
+Whisper with diarization for time-accurate long-form transcripts. Diarization is
+scored with the diarization error rate (DER) introduced in the NIST Rich
+Transcription evaluations~\cite{fiscus2006rt}, computed here with
+pyannote.metrics~\cite{bredin2017pyannotemetrics}. These systems target
+monolingual or language-agnostic audio; we study their behaviour on code-mixed
+meetings and add speaker identity resolution across the chunks of a live
+session.
+
+\paragraph{Meeting summarization}
+Meeting corpora such as AMI~\cite{carletta2005ami} and ICSI~\cite{janin2003icsi}
+and benchmarks such as QMSum~\cite{zhong2021qmsum} have driven meeting
+summarization research, overwhelmingly in English. Summaries are commonly scored
+with ROUGE~\cite{lin2004rouge}. Open-weight instruction-tuned models such as
+Qwen2.5~\cite{qwen2024qwen25} and Llama~3~\cite{grattafiori2024llama3} now make
+it practical to summarize and extract action items locally; we evaluate two such
+models on code-mixed transcripts.
+
+\paragraph{Reproducibility}
+Pineau et al.~\cite{pineau2021reproducibility} document how often published
+machine-learning results cannot be reproduced and argue for recording code
+versions, configurations and data provenance. Our system applies these practices
+at the level of individual pipeline runs, so that each reported number can be
+traced to the runs, code and settings that produced it.
+
+\pending{Add closest prior work on Hinglish meeting assistants or code-mixed
+summarization, if any is found in the literature search.}

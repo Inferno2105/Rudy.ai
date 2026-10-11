@@ -1,0 +1,38 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\pending{Interpretation of the results: what dominates the remaining error, and
+what it means for users of Hinglish meetings.}
+
+\subsection{Limitations}
+\paragraph{Script-based language identification}
+The language tagger reads script, not language. Hindi that the recognizer
+writes in Latin script is tagged \textsc{English}, so its accuracy is bounded by
+how consistently the recognizer uses Devanagari for Hindi.
+\pending{Quantify from the confusion matrix.}
+
+\paragraph{Segment-level timing}
+Speakers are assigned per recognized segment, so a segment spanning a change of
+speaker is attributed entirely to one of them. Word-level timestamps would
+remove this error at some cost in speed.
+
+\paragraph{Speaker resolution from short or mixed windows}
+Embeddings of windows shorter than 1\,s are not trusted and are left unresolved,
+which increases the number of unresolved turns in rapid exchanges. Resolving a
+whole chunk with one embedding is faster but blends the voices of different
+speakers in the same chunk; Table~\ref{tab:ablation_results} measures this
+trade-off.
+
+\paragraph{Dataset size and conditions}
+\pending{N} clips recorded by \pending{participants} with \pending{devices} do
+not cover the range of accents, room acoustics and meeting styles found in
+practice, and the confidence intervals reflect this.
+
+\paragraph{Language-model variability}
+Language-model outputs vary between runs even at low temperature; we report the
+spread over repeated runs rather than a single run.
+
+\subsection{Threats to validity}
+\pending{Annotator bias (annotators are also authors?); reference script
+conventions; the choice of the 0.5 Jaccard threshold for action items;
+generalization beyond Hindi--English.}

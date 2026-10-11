@@ -1,0 +1,59 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Code-switching, the alternation between two languages within a conversation or a
+single sentence, is the norm rather than the exception in multilingual
+communities~\cite{sitaram2019survey}. In Indian professional and academic
+settings, meetings mix Hindi and English freely: a sentence such as
+``\textit{release Friday ko hoga, testing kal tak}'' (``the release will be on
+Friday, testing by tomorrow'') carries its decision in English nouns and its
+commitment in Hindi grammar. Automatic meeting assistants, which transcribe a
+meeting, attribute speech to speakers and distil it into a summary and action
+items, are now common for English, but three properties of Hindi--English
+meetings make them a poor fit for existing tools.
+
+First, \emph{the script is ambiguous}. Hindi words may be written in Devanagari
+or in Latin script, and a speech recognizer may emit either, even within one
+utterance. A transcript that is correct word for word can still score close to
+100\,\% word error rate if its reference uses the other script. Second,
+\emph{downstream steps interact}. Transliterating Hindi into Latin script, which
+makes a transcript readable to colleagues who do not read Devanagari, destroys
+the evidence a script-based language identifier relies on; done in the wrong
+order, every segment silently becomes ``English''. Third, \emph{recordings are
+often confidential}, so an assistant that uploads audio to a cloud service is
+frequently not an option.
+
+This paper presents \system{}, a meeting assistant for Hindi--English
+code-mixed speech that runs entirely on one machine with open-weight models, and
+a reproducible evaluation of it. Our contributions are:
+
+\begin{enumerate}
+  \item \textbf{An integrated, fully local pipeline}
+    (Section~\ref{sec:system}) combining Whisper large-v3~\cite{radford2023whisper},
+    pyannote speaker diarization~\cite{bredin2020pyannote,plaquet2023powerset},
+    script-based language identification and a locally served
+    7B-parameter language model~\cite{qwen2024qwen25} to produce speaker-attributed,
+    language-tagged transcripts, Romanized Hinglish, summaries and action items,
+    for both recorded and live meetings.
+  \item \textbf{Design rules for code-mixed pipelines}, enforced in code rather
+    than by convention: language identification precedes transliteration;
+    transliteration is restricted to script conversion and may not correct
+    recognition errors; and the evaluation uses a deterministic transliterator,
+    never the system's own, so the system is not used to score itself.
+  \item \textbf{A provenance design that makes results auditable}
+    (Section~\ref{sec:provenance}): each run records the code commit, a hash of
+    every output-affecting setting, prompt versions and the input's checksum;
+    runs whose stages were produced under different configurations are excluded
+    from evaluation automatically; and all tables and figures in this paper are
+    generated from stored runs by a single command.
+  \item \textbf{An evaluation study} (Sections~\ref{sec:evaluation}
+    and~\ref{sec:results}) covering seven families of metrics (recognition,
+    diarization, cross-chunk speaker identity, language identification,
+    summarization, action-item extraction and system efficiency) on
+    \pending{N} annotated code-mixed meetings, with annotator agreement,
+    bootstrap confidence intervals and ablations over the choices that most
+    affect quality and cost.
+\end{enumerate}
+
+The code, the annotation protocol and the generated results are released at
+\pending{repository URL}.

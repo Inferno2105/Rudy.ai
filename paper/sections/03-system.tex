@@ -1,0 +1,156 @@
+\section{System}
+\label{sec:system}
+
+\begin{figure*}[t]
+\centering
+% Scaled to the text width, so the diagram can never run into the margin.
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=5mm and 7mm,
+  stage/.style={draw, rounded corners=2pt, align=center, font=\footnotesize,
+                minimum height=9mm, minimum width=19mm, fill=white},
+  model/.style={font=\scriptsize\itshape, text=black!60},
+  arrow/.style={-{Stealth[length=2mm]}, thick},
+]
+  \node[stage] (audio) {Recording\\[-1pt]\scriptsize or live chunks};
+  \node[stage, above right=1mm and 9mm of audio] (asr) {Transcription};
+  \node[stage, below right=1mm and 9mm of audio] (dia) {Diarization};
+  \node[stage, right=9mm of $(asr)!0.5!(dia)$] (align) {Alignment\\[-1pt]\scriptsize + turn merging};
+  \node[stage, right=of align] (lid) {Language\\[-1pt]\scriptsize identification};
+  \node[stage, above right=1mm and 9mm of lid] (norm) {Hinglish\\[-1pt]\scriptsize normalization};
+  \node[stage, below right=1mm and 9mm of lid] (stats) {Speaker stats\\[-1pt]\scriptsize + metadata};
+  \node[stage, right=of norm] (sum) {Summary\\[-1pt]\scriptsize + action items};
+
+  \node[model, above=0.5mm of asr] (m1) {Whisper large-v3};
+  \node[model, below=0.5mm of dia] (m2) {pyannote 3.1};
+  \node[model, above=0.5mm of norm] (m3) {Qwen2.5-7B (local)};
+  \node[model, above=0.5mm of sum] (m4) {Qwen2.5-7B (local)};
+  \node[model, below=0.5mm of lid] {script counts};
+
+  \draw[arrow] (audio) -- (asr);
+  \draw[arrow] (audio) -- (dia);
+  \draw[arrow] (asr) -- (align);
+  \draw[arrow] (dia) -- (align);
+  \draw[arrow] (align) -- (lid);
+  \draw[arrow] (lid) -- (norm);
+  \draw[arrow] (lid) -- (stats);
+  \draw[arrow] (norm) -- (sum);
+
+  \node[draw, dashed, rounded corners=3pt, inner sep=3mm, fit=(audio)(asr)(dia)(sum)(stats)(m1)(m2)(m3)(m4),
+        label={[font=\scriptsize]below:{every stage writes an artifact and a manifest entry
+        (code commit, configuration hash, prompt versions, input SHA-256)}}] {};
+\end{tikzpicture}%
+}
+\caption{Pipeline of \system{}. Transcription and diarization both read the
+audio; alignment assigns speakers to recognized text; language identification
+runs on the original script \emph{before} Hinglish normalization; summaries and
+action items are produced from the normalized transcript. All models run on the
+local machine.}
+\label{fig:pipeline}
+\end{figure*}
+
+\system{} is a Python package exposing a command-line interface, an HTTP API and
+a web interface over one pipeline (Fig.~\ref{fig:pipeline}). Each stage is a
+function from input artifacts to one output artifact, declared with the
+artifacts it requires so that the orchestrator, not the caller, enforces the
+order. Stages write JSON artifacts into a directory per run; a SQLite index over
+those directories serves queries but can always be rebuilt from them.
+
+\subsection{Speech recognition}
+Recognition uses Whisper large-v3~\cite{radford2023whisper} through
+faster-whisper~\cite{fasterwhisper}, a CTranslate2 reimplementation, with beam
+search (width~5) and Whisper's voice-activity filter to suppress hallucinated
+text in silence. The model runs with 8-bit weights on CPU (\texttt{int8}) or
+8-bit weights with 16-bit activations on GPU (\texttt{int8\_float16}). Hindi
+segments are emitted in Devanagari or Latin script at the model's discretion;
+the pipeline keeps the recognizer's output unmodified as the raw transcript.
+
+\subsection{Diarization, alignment and turns}
+Speaker diarization uses the pyannote speaker-diarization~3.1
+pipeline~\cite{bredin2023pyannote21,plaquet2023powerset}, optionally given the
+number of speakers. Each recognized segment is assigned the speaker whose turns
+overlap it the longest; a segment with no overlapping turn is labelled
+\textsc{unknown} rather than guessed. Consecutive segments of the same speaker
+are merged into turns, but never across an \textsc{unknown} segment.
+
+\subsection{Speaker identity across chunks}
+In live mode each chunk is diarized independently, so the label
+``SPEAKER\_00'' in one chunk need not denote the same person in the next. A
+speaker registry resolves chunk-local labels to session-wide identities: for
+each local label it embeds the label's longest turn with a
+WeSpeaker ResNet34 model~\cite{wang2023wespeaker} and assigns it to the
+registered speaker with the highest cosine similarity, if that similarity is at
+least $\theta=0.75$; otherwise a new speaker is registered. A matched speaker's
+centroid is updated as $c \leftarrow (1-\alpha)c + \alpha e$ with $\alpha=0.3$.
+Windows shorter than 1\,s give unstable embeddings and are left unresolved
+rather than merged, keeping their chunk-local label visibly prefixed so that
+uncertainty is not hidden. The threshold $\theta$ is studied in
+Section~\ref{sec:results}.
+
+\subsection{Language identification}
+Each segment is tagged \textsc{Hindi}, \textsc{English} or \textsc{Code-Mixed}
+from its script: let $r$ be the fraction of script-bearing words written in
+Devanagari. A segment is \textsc{Hindi} if $r \geq 0.85$, \textsc{English} if
+$r \leq 0.15$ and \textsc{Code-Mixed} otherwise. A segment with a single
+script-bearing word takes that word's script, and one with none (numbers or
+punctuation only) defaults to \textsc{English}, a default recorded as such. The rule is deliberately
+simple and auditable, but it can only see what the script shows: Hindi that the
+recognizer has already written in Latin script is tagged \textsc{English}. For
+the same reason, this stage must run before transliteration. The pipeline
+enforces the order, since normalization declares the tagged transcript as its
+input and copies the tags instead of recomputing them.
+
+\subsection{Hinglish normalization}
+For readers who do not read Devanagari, a local language model rewrites each
+segment in Romanized Hinglish. The prompt restricts the model to script
+conversion: it must not translate, add, remove or correct words. Correcting
+recognition errors at this step would make recognition quality look better than
+it is and would contaminate the evaluation of both steps.
+
+\subsection{Summaries and action items}
+A local language model (Qwen2.5-7B-Instruct~\cite{qwen2024qwen25}, served by
+Ollama~\cite{ollama}, temperature~0.1) produces a summary with highlights and
+decisions, and a list of action items with an assignee, a task and a deadline
+when one is stated, both from the speaker-attributed transcript and both as
+JSON, with one retry on unparseable output. Prompts are versioned constants
+recorded in each run, so a prompt change is visible in the provenance of every
+result produced with it. Speaker statistics (speaking time, share, turns,
+words, words per minute) and meeting metadata are computed deterministically.
+
+\subsection{Live mode}
+In live mode, audio from a microphone is segmented at pauses by
+WebRTC voice-activity detection~\cite{webrtcvad} (aggressiveness~2): a chunk
+ends at a pause of at least 1.2\,s and lasts between 1 and 45\,s, so chunk
+boundaries rarely cut a word or a turn. Recording and processing are decoupled
+through a queue: the capture thread only enqueues chunks, and a single worker
+thread owns every model, so audio is never dropped while a chunk is being
+processed. Stopping a session drains the queue before the final stages run. Each
+live run records the number of chunks recorded and processed, the maximum
+backlog and the real-time factor, which together show whether the system kept
+up with speech.
+
+\subsection{Provenance and reproducibility}
+\label{sec:provenance}
+Every run directory holds a manifest that records, at the start of the run: the
+code commit and whether the working tree had uncommitted changes; the software
+environment; a hash of every setting that can change an output (model names,
+devices and numeric precision, thresholds, prompt versions); the input's file
+name, size and SHA-256 checksum; and whether the input is real or synthetic
+audio. Each stage appends its status, duration, outputs and counts.
+
+Resuming an interrupted run re-records the environment. If the configuration
+hash or input checksum changed, the resume is refused unless explicitly
+overridden, and an overridden run is flagged as mixed. The evaluation scores only
+runs on real audio whose stages were all produced under one configuration and
+one code version; others are reported as ineligible with the reason. Because
+recognizer output is affected by numeric precision, CPU (\texttt{int8}) and GPU
+(\texttt{int8\_float16}) runs have different configuration hashes and are never
+pooled. All tables and figures in Section~\ref{sec:results} are generated from
+the stored runs by one command, \texttt{meeting-assistant paper build}.
+
+\subsection{Deployment}
+The system runs on a laptop CPU or, through a container with GPU access, on a
+consumer GPU; the language model is served locally, so no audio or text leaves
+the machine. A web interface supports uploading recordings, live sessions,
+waveform playback synchronized with the transcript and search across meetings;
+each user account sees only its own recordings and meetings.
