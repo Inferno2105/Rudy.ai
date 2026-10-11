@@ -1,9 +1,8 @@
 """FastAPI application factory.
 
-Run with ``meeting-assistant serve``. The API has **no authentication**: it is
-meant for a single user on a trusted machine or network. Anyone who can reach
-the port can read every transcript and start the server's microphone, which is
-why ``serve`` binds to 127.0.0.1 by default and warns when bound elsewhere.
+Run with ``meeting-assistant serve``. Every route except ``/api/health`` and
+``/api/auth/*`` needs a signed-in user (:mod:`meeting_assistant.api.auth`); the
+session is an HttpOnly cookie, and cross-site POSTs are refused.
 
 **Startup order matters here for the same reason it does in the CLI.** The
 lifespan registers FFmpeg's DLL directory and then imports the diarization
@@ -33,7 +32,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from meeting_assistant import __version__, config
+from meeting_assistant.api.auth import same_origin_only
 from meeting_assistant.api.jobs import JobManager
+from meeting_assistant.api.routers import auth as auth_router
 from meeting_assistant.api.routers import jobs as jobs_router
 from meeting_assistant.api.routers import runs as runs_router
 from meeting_assistant.api.routers import system as system_router
@@ -167,6 +168,8 @@ def create_app(
         allow_headers=["Content-Type"],
     )
 
+    app.middleware("http")(same_origin_only)
+
     @app.middleware("http")
     async def _security_headers(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -188,6 +191,8 @@ def create_app(
     async def _config_error(_: Request, exc: ConfigError) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
+    app.include_router(system_router.public, prefix="/api")
+    app.include_router(auth_router.router, prefix="/api")
     app.include_router(system_router.router, prefix="/api")
     app.include_router(runs_router.router, prefix="/api")
     app.include_router(jobs_router.router, prefix="/api")

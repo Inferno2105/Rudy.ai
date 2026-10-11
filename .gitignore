@@ -54,6 +54,8 @@ data/runs/
 data/experiments/
 data/index.sqlite
 data/index.sqlite-journal
+data/users.sqlite
+data/users.sqlite-journal
 data/screenshots/
 
 # Keep hand-labelled evaluation references and generated reports —

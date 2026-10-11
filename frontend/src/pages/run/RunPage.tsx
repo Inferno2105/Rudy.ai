@@ -95,7 +95,7 @@ export function RunPage() {
         title="Meeting not found"
         action={
           <Button asChild>
-            <Link to="/">Back to meetings</Link>
+            <Link to="/meetings">Back to meetings</Link>
           </Button>
         }
       >
@@ -123,7 +123,7 @@ export function RunPage() {
   return (
     <>
       <Link
-        to="/"
+        to="/meetings"
         className="text-muted hover:text-fg group mb-4 inline-flex items-center gap-1 text-sm"
       >
         <ArrowLeft

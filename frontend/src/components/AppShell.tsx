@@ -6,6 +6,8 @@ import { Link, NavLink, useLocation, useOutlet } from 'react-router'
 import { useCurrentJob, useHealth } from '../api/queries'
 import { isJobActive } from '../api/types'
 import { useTheme, type ThemePreference } from '../lib/theme'
+import { AccountPanel } from './AccountPanel'
+import { WaveBackdrop } from './art'
 import { EASE_OUT } from '../lib/easing'
 import { cn } from '../lib/utils'
 import { JobStateBadge } from './status'
@@ -13,7 +15,7 @@ import { Button } from './ui/button'
 import { BrandMark, Equalizer } from './visuals'
 
 const NAV = [
-  { to: '/', label: 'Meetings', icon: ListMusic, end: true },
+  { to: '/meetings', label: 'Meetings', icon: ListMusic, end: true },
   { to: '/new', label: 'New run', icon: Upload, end: false },
   { to: '/live', label: 'Live', icon: Mic, end: false },
   { to: '/evaluation', label: 'Evaluation', icon: BarChart3, end: false },
@@ -166,6 +168,7 @@ function ThemeToggle() {
 function SidebarFooter() {
   return (
     <div className="space-y-3">
+      <AccountPanel />
       <HealthIndicator />
       <ThemeToggle />
     </div>
@@ -174,7 +177,7 @@ function SidebarFooter() {
 
 function Brand() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 rounded-lg">
+    <Link to="/meetings" className="flex items-center gap-2.5 rounded-lg">
       <BrandMark />
       <span className="font-display text-fg leading-tight font-semibold" translate="no">
         Meeting
@@ -214,6 +217,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_1fr]">
+      <WaveBackdrop />
       <a
         href="#main"
         className="bg-accent text-accent-fg sr-only z-50 rounded-md px-3 py-2 focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2"

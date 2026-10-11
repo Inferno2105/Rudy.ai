@@ -7,7 +7,7 @@ import { API, server } from '../test/server'
 
 describe('meetings list', () => {
   it('lists runs by recording name with status and origin', async () => {
-    renderApp('/')
+    renderApp('/meetings')
     const list = await screen.findByRole('list', { name: '3 meetings' })
     const rows = within(list).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
@@ -20,7 +20,7 @@ describe('meetings list', () => {
   })
 
   it('filters by search text without a server round trip', async () => {
-    const { user } = renderApp('/')
+    const { user } = renderApp('/meetings')
     await screen.findByRole('list', { name: '3 meetings' })
     await user.type(screen.getByLabelText('Search meetings'), 'standup')
     const rows = within(screen.getByRole('list', { name: '1 meeting' })).getAllByRole('listitem')
@@ -36,7 +36,7 @@ describe('meetings list', () => {
         return HttpResponse.json([])
       }),
     )
-    const { user, router } = renderApp('/')
+    const { user, router } = renderApp('/meetings')
     await user.selectOptions(await screen.findByLabelText('Status'), 'partial')
     await screen.findByText('No meetings match these filters')
     expect(seen.at(-1)).toContain('status=partial')
@@ -45,7 +45,7 @@ describe('meetings list', () => {
 
   it('shows a first-run empty state when there are no runs at all', async () => {
     server.use(http.get(API('/api/runs'), () => HttpResponse.json([])))
-    renderApp('/')
+    renderApp('/meetings')
     expect(await screen.findByText('No meetings yet')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Process a recording' })).toHaveAttribute(
       'href',
@@ -62,7 +62,7 @@ describe('meetings list', () => {
           : HttpResponse.json([]),
       ),
     )
-    const { user } = renderApp('/')
+    const { user } = renderApp('/meetings')
     expect(await screen.findByText('database is locked')).toBeInTheDocument()
     fail = false
     await user.click(screen.getByRole('button', { name: 'Try again' }))
@@ -73,7 +73,7 @@ describe('meetings list', () => {
     server.use(
       http.post(API('/api/index/rebuild'), () => HttpResponse.json({ indexed: 3, total: 3 })),
     )
-    const { user } = renderApp('/')
+    const { user } = renderApp('/meetings')
     await screen.findByRole('list', { name: '3 meetings' })
     await user.click(screen.getByRole('button', { name: /Rebuild index/ }))
     expect(await screen.findByText('Indexed 3 of 3 runs from disk.')).toBeInTheDocument()
@@ -82,7 +82,7 @@ describe('meetings list', () => {
 
 describe('meetings overview', () => {
   it('shows speakers, language mix and summary stats from the run list', async () => {
-    renderApp('/')
+    renderApp('/meetings')
     const list = await screen.findByRole('list', { name: '3 meetings' })
     const first = within(list).getAllByRole('listitem')[0]!
     expect(within(first).getByText('2 speakers')).toBeInTheDocument()

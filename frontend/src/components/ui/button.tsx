@@ -9,7 +9,7 @@ type Size = 'sm' | 'md'
 const VARIANTS: Record<Variant, string> = {
   // Brand gradient with a soft glow; brightens on hover, presses in on click.
   primary:
-    'bg-cta text-white glow shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25)] hover:brightness-110',
+    'bg-cta text-cta-fg glow shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25)] hover:brightness-110',
   secondary: 'glass text-fg hover:bg-subtle hover:border-strong-border',
   ghost: 'text-muted hover:bg-subtle hover:text-fg',
   danger:

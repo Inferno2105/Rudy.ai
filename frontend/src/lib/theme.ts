@@ -24,7 +24,7 @@ export function applyTheme(preference: ThemePreference): void {
   document.documentElement.classList.toggle('dark', dark)
   // Browser chrome follows the chosen theme, not only the system one.
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
-    meta.content = dark ? '#0c0e1b' : '#f6f5fb'
+    meta.content = dark ? '#1a1614' : '#fbf6ee'
   }
 }
 

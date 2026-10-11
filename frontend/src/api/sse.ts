@@ -9,7 +9,7 @@
  * split across two network chunks), multi-line `data`, comment lines (the
  * server's keepalives), and dispatch on a blank line.
  */
-import { apiUrl } from './client'
+import { apiUrl, noteStatus } from './client'
 import type { EndEvent, Job, ManifestEvent, SegmentsEvent } from './types'
 
 export interface SseMessage {
@@ -124,6 +124,11 @@ export async function followRunEvents(runId: string, options: FollowOptions): Pr
         signal,
         cache: 'no-store',
       })
+      if (response.status === 401) {
+        noteStatus(401, url)
+        onStatus('closed')
+        return
+      }
       if (response.status === 404) {
         onStatus('failed', 'This run does not exist')
         return

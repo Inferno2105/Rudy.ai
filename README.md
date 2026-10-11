@@ -74,10 +74,20 @@ run's transcript (Romanized or original script, with click-to-seek audio),
 summary, action items, speaker statistics and full provenance, plus the
 evaluation report. See `frontend/README.md` for development.
 
-**There is no login.** The app is a single-user tool. By default it listens
-only on this machine. With `--host 0.0.0.0`, anyone who can reach the address
-can read every transcript, upload files and start this machine's microphone,
-so only do that on a network you trust.
+**Accounts.** Open `http://127.0.0.1:8000/` for the landing page, then sign in.
+On the very first visit the sign-in page asks you to create the first account.
+Add or manage more from the terminal:
+
+```powershell
+meeting-assistant users add <name>              # prompts for a password
+meeting-assistant users list
+meeting-assistant users reset-password <name>
+meeting-assistant users remove <name>
+```
+
+Passwords are stored hashed (scrypt) in `data/users.sqlite`; sessions are an
+HttpOnly cookie that lasts 14 days (`SESSION_TTL_DAYS`). Every page and API
+route except the landing page, sign-in and `/api/health` requires an account.
 
 ### Command line
 

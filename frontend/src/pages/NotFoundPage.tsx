@@ -13,7 +13,7 @@ export function NotFoundPage() {
       title="Page not found"
       action={
         <Button asChild variant="primary">
-          <Link to="/">Go to meetings</Link>
+          <Link to="/meetings">Go to meetings</Link>
         </Button>
       }
     >

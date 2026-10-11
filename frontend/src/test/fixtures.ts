@@ -19,6 +19,8 @@ import type {
 
 export const RUN_ID = '20261001-152823_batch_test_hindi'
 
+export const signedInUser = { username: 'rushi', created_at: '2026-10-11T10:00:00+00:00' }
+
 export const health: Health = { version: '0.1.0', ok: true, problems: [] }
 
 export const runSummaries: RunSummary[] = [

@@ -138,7 +138,7 @@ export function NewRunPage() {
               >
                 <div className="animate-float relative mb-4" aria-hidden>
                   <div className="bg-brand absolute inset-0 rounded-2xl opacity-40 blur-xl" />
-                  <div className="bg-cta relative grid size-14 place-items-center rounded-2xl text-white">
+                  <div className="bg-cta text-cta-fg relative grid size-14 place-items-center rounded-2xl">
                     <UploadCloud className="size-7" />
                   </div>
                 </div>

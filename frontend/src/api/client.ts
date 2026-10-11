@@ -3,16 +3,19 @@
  *
  * `openapi-fetch` over the generated `paths` type: every path, parameter and
  * response body is checked at compile time against the backend's schema.
- * The API has no authentication (a single-user tool on a trusted machine or
- * network), so requests carry no credentials.
+ * The session is an HttpOnly cookie the browser sends with every same-origin
+ * request, so no code here handles credentials. When any request comes back
+ * 401 (signed out elsewhere, session expired) the registered handler runs,
+ * which sends the user to the sign-in page.
  */
-import createClient from 'openapi-fetch'
+import createClient, { type Middleware } from 'openapi-fetch'
 
 import type { paths } from './schema'
 import type { ArtifactName, UploadResult } from './types'
 
 /** Absolute URL for an API path. Relative URLs are not valid outside a page
  * (tests run under Node), and the API is always same-origin. */
+
 export function apiUrl(path: string): string {
   return new URL(path, window.location.origin).toString()
 }
@@ -47,12 +50,35 @@ export function errorMessage(body: unknown, status: number): string {
   return status === 0 ? 'The server could not be reached' : `Request failed (HTTP ${status})`
 }
 
+let onUnauthorized: () => void = () => {}
+
+/** Called when the server says the session is gone (set once by the app). */
+export function setUnauthorizedHandler(handler: () => void): void {
+  onUnauthorized = handler
+}
+
+/** 401 from a data endpoint means "signed out". The sign-in endpoints answer
+ * 401 for a wrong password, which is not that. */
+export function noteStatus(status: number, url: string): void {
+  if (status === 401 && !new URL(url, window.location.origin).pathname.startsWith('/api/auth/')) {
+    onUnauthorized()
+  }
+}
+
+const sessionWatch: Middleware = {
+  onResponse({ request, response }) {
+    noteStatus(response.status, request.url)
+    return response
+  },
+}
+
 export const api = createClient<paths>({
   baseUrl: window.location.origin,
   // Resolve fetch per call rather than capturing it at import time, so
   // anything that wraps fetch later (request mocking in tests, devtools) applies.
   fetch: (request) => globalThis.fetch(request),
 })
+api.use(sessionWatch)
 
 interface FetchResult<T> {
   data?: T
@@ -84,6 +110,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw new ApiError(0, errorMessage(null, 0))
   }
+  noteStatus(response.status, response.url || apiUrl(path))
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
     throw new ApiError(response.status, errorMessage(body, response.status))
@@ -121,6 +148,7 @@ export function uploadAudio(
       if (event.lengthComputable) onProgress(event.loaded / event.total)
     }
     xhr.onload = () => {
+      noteStatus(xhr.status, apiUrl('/api/uploads'))
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response as UploadResult)
       else reject(new ApiError(xhr.status, errorMessage(xhr.response, xhr.status)))
     }

@@ -38,8 +38,10 @@ function RecordOrb({ active }: { active: boolean }) {
       ) : null}
       <span
         className={cn(
-          'relative grid size-20 place-items-center rounded-full text-white transition-colors duration-500',
-          active ? 'bg-danger shadow-[0_0_48px_-6px_var(--color-danger)]' : 'bg-cta glow',
+          'relative grid size-20 place-items-center rounded-full transition-colors duration-500',
+          active
+            ? 'bg-danger text-white shadow-[0_0_48px_-6px_var(--color-danger)]'
+            : 'bg-cta text-cta-fg glow',
         )}
       >
         <Mic className="size-8" />

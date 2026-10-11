@@ -50,8 +50,13 @@ than leaving them testing a contract the server no longer has.
 
 ## Design notes
 
-- **No login.** The API has no authentication by design (a single-user tool on
-  a trusted machine or network), so the client sends no credentials.
+- **Accounts.** Sign-in sets an HttpOnly session cookie the browser sends with
+  every same-origin request (including `<audio>` and the event stream), so no
+  code handles credentials. Any 401 from a data endpoint re-checks
+  `/api/auth/status`, and the route guard sends the user to `/login?next=…`.
+- **Routes.** `/` is the public landing page, `/login` signs in (or creates the
+  first account); the app lives under `/meetings`, `/new`, `/live`, `/runs/:id`
+  and `/evaluation`.
 - **Progress over SSE.** `src/api/sse.ts` reads the `/events` stream with
   `fetch` and parses it itself, for an explicit abort on unmount, a chosen
   backoff and a clean stop on `end`. Segments are spliced by their

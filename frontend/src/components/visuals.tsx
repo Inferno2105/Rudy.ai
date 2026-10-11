@@ -21,7 +21,7 @@ export function BrandMark({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn('bg-cta glow grid size-8 place-items-center rounded-xl text-white', className)}
+      className={cn('bg-cta glow text-cta-fg grid size-8 place-items-center rounded-xl', className)}
     >
       <Equalizer />
     </span>

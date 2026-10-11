@@ -3,9 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * "Studio" design tokens. Colours are semantic (surface, muted, accent...) so
- * light and dark are one set of overrides and components never branch on the
- * theme. Dark is the primary theme; light keeps the same character.
+ * "Sunset" design tokens: warm charcoal (or cream), amber and rose, gold
+ * highlights. Colours are semantic (surface, muted, accent...) so light and
+ * dark are one set of overrides and components never branch on the theme.
  */
 @theme {
   --font-sans:
@@ -15,31 +15,33 @@
     system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
-  /* Light */
-  --color-canvas: oklch(97.6% 0.012 285);
-  --color-surface: oklch(100% 0 0);
-  --color-subtle: oklch(95% 0.016 285);
-  --color-border: oklch(22% 0.05 280 / 0.09);
-  --color-strong-border: oklch(22% 0.05 280 / 0.18);
-  --color-fg: oklch(21% 0.04 280);
-  --color-muted: oklch(45% 0.04 280);
-  --color-faint: oklch(56% 0.035 280);
-  --color-accent: oklch(55% 0.24 288);
-  --color-accent-2: oklch(64% 0.15 218);
-  --color-accent-hover: oklch(50% 0.24 288);
-  --color-accent-fg: oklch(100% 0 0);
-  --color-accent-soft: oklch(55% 0.24 288 / 0.1);
-  --color-danger: oklch(55% 0.21 25);
-  --color-danger-soft: oklch(55% 0.21 25 / 0.1);
-  --color-warning: oklch(58% 0.15 60);
-  --color-warning-soft: oklch(70% 0.15 75 / 0.14);
-  --color-success: oklch(55% 0.15 155);
-  --color-success-soft: oklch(60% 0.15 155 / 0.12);
-  --color-ring: oklch(60% 0.22 288);
-  --color-glow: oklch(55% 0.24 288 / 0.28);
-  /* Filled call-to-action gradient: dark enough for white text (WCAG AA) in both themes. */
-  --color-cta-1: oklch(52% 0.24 288);
-  --color-cta-2: oklch(54% 0.16 240);
+  /* Light ("sunset" on cream paper) */
+  --color-canvas: #fbf6ee;
+  --color-surface: #ffffff;
+  --color-subtle: rgb(120 72 20 / 0.06);
+  --color-border: rgb(74 45 20 / 0.11);
+  --color-strong-border: rgb(74 45 20 / 0.22);
+  --color-fg: #2a1f17;
+  --color-muted: #6b5a4b;
+  --color-faint: #8a7766;
+  --color-accent: #b45309;
+  --color-accent-2: #e11d48;
+  --color-accent-hover: #92400e;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: rgb(180 83 9 / 0.1);
+  --color-highlight: #d97706;
+  --color-danger: #c81e1e;
+  --color-danger-soft: rgb(200 30 30 / 0.09);
+  --color-warning: #a16207;
+  --color-warning-soft: rgb(202 138 4 / 0.12);
+  --color-success: #047857;
+  --color-success-soft: rgb(4 120 87 / 0.1);
+  --color-ring: #d97706;
+  --color-glow: rgb(217 119 6 / 0.3);
+  /* Filled call-to-action gradient; --color-cta-fg is AA-legible on both ends. */
+  --color-cta-1: #b45309;
+  --color-cta-2: #be123c;
+  --color-cta-fg: #ffffff;
 
   --animate-shimmer: shimmer 1.8s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
@@ -120,29 +122,32 @@
 }
 
 .dark {
-  --color-canvas: oklch(13.5% 0.028 278);
-  --color-surface: oklch(19% 0.035 280);
-  --color-subtle: oklch(100% 0 0 / 0.05);
-  --color-border: oklch(100% 0 0 / 0.08);
-  --color-strong-border: oklch(100% 0 0 / 0.16);
-  --color-fg: oklch(96.5% 0.01 280);
-  --color-muted: oklch(76% 0.025 280);
-  --color-faint: oklch(64% 0.03 280);
-  --color-accent: oklch(72% 0.18 290);
-  --color-accent-2: oklch(82% 0.13 210);
-  --color-accent-hover: oklch(78% 0.16 290);
-  --color-accent-fg: oklch(100% 0 0);
-  --color-accent-soft: oklch(72% 0.18 290 / 0.16);
-  --color-danger: oklch(72% 0.18 22);
-  --color-danger-soft: oklch(72% 0.18 22 / 0.14);
-  --color-warning: oklch(84% 0.16 82);
-  --color-warning-soft: oklch(84% 0.16 82 / 0.13);
-  --color-success: oklch(80% 0.17 155);
-  --color-success-soft: oklch(80% 0.17 155 / 0.13);
-  --color-ring: oklch(76% 0.16 290);
-  --color-glow: oklch(72% 0.18 290 / 0.35);
-  --color-cta-1: oklch(54% 0.22 290);
-  --color-cta-2: oklch(55% 0.15 245);
+  /* Dark ("sunset" on warm charcoal), the primary theme */
+  --color-canvas: #1a1614;
+  --color-surface: #26201c;
+  --color-subtle: rgb(251 243 232 / 0.055);
+  --color-border: rgb(251 243 232 / 0.09);
+  --color-strong-border: rgb(251 243 232 / 0.18);
+  --color-fg: #fbf3e8;
+  --color-muted: #cdbda9;
+  --color-faint: #a3917e;
+  --color-accent: #f59e0b;
+  --color-accent-2: #f43f5e;
+  --color-accent-hover: #fbbf24;
+  --color-accent-fg: #1a1614;
+  --color-accent-soft: rgb(245 158 11 / 0.14);
+  --color-highlight: #fde68a;
+  --color-danger: #f87171;
+  --color-danger-soft: rgb(248 113 113 / 0.14);
+  --color-warning: #facc15;
+  --color-warning-soft: rgb(250 204 21 / 0.12);
+  --color-success: #34d399;
+  --color-success-soft: rgb(52 211 153 / 0.13);
+  --color-ring: #fbbf24;
+  --color-glow: rgb(245 158 11 / 0.34);
+  --color-cta-1: #f59e0b;
+  --color-cta-2: #fb7185;
+  --color-cta-fg: #1a1614;
   color-scheme: dark;
 }
 

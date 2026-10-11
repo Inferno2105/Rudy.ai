@@ -121,12 +121,18 @@ RUNS_DIR: Path = DATA_DIR / "runs"
 EVAL_DIR: Path = DATA_DIR / "eval"
 EXPERIMENTS_DIR: Path = DATA_DIR / "experiments"
 INDEX_DB_PATH: Path = DATA_DIR / "index.sqlite"
+# User accounts and login sessions. Not rebuildable from disk (unlike the
+# index), so it lives in its own file; see meeting_assistant.accounts.
+USERS_DB_PATH: Path = DATA_DIR / "users.sqlite"
 
 
 # ---------------------------------------------------------------------------
 # HTTP API
 # ---------------------------------------------------------------------------
-# No authentication: 127.0.0.1 keeps the API on this machine by default.
+# Every route except health and login needs a signed-in user (see
+# meeting_assistant.accounts). 127.0.0.1 keeps the server on this machine.
+SESSION_COOKIE = "ma_session"
+SESSION_TTL_DAYS: int = int(os.environ.get("SESSION_TTL_DAYS", "14"))
 API_HOST: str = os.environ.get("API_HOST", "127.0.0.1")
 API_PORT: int = int(os.environ.get("API_PORT", "8000"))
 API_CORS_ORIGINS: list[str] = [

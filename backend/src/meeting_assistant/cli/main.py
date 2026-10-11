@@ -504,10 +504,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print(f"Web UI not built ({config.FRONTEND_DIST}); run `npm run build` in frontend/")
     if host not in ("127.0.0.1", "localhost", "::1"):
         print(
-            "WARNING: reachable from other machines on this network, with no "
-            "authentication. Anyone who can reach this address can read every "
-            "transcript, upload files and start this machine's microphone. "
-            "Only do this on a network you trust."
+            "Reachable from other machines on this network. Everything except "
+            "the sign-in page needs an account; sessions travel over plain HTTP "
+            "here, so use it on a network you trust."
         )
     uvicorn.run(
         "meeting_assistant.api.app:create_app",
@@ -516,6 +515,46 @@ def cmd_serve(args: argparse.Namespace) -> int:
         port=port,
         log_level="warning" if args.quiet else "info",
     )
+    return 0
+
+
+def _read_new_password() -> str:
+    """A new password: prompted twice at a terminal, or one line from stdin."""
+    if not sys.stdin.isatty():
+        return sys.stdin.readline().rstrip("\r\n")
+    import getpass
+
+    first = getpass.getpass("New password: ")
+    if getpass.getpass("Repeat password: ") != first:
+        raise SystemExit("Passwords did not match; nothing changed.")
+    return first
+
+
+def cmd_users(args: argparse.Namespace) -> int:
+    """Manage web UI accounts (stored in data/users.sqlite)."""
+    from meeting_assistant import accounts
+
+    try:
+        with accounts.open_accounts() as conn:
+            if args.users_cmd == "list":
+                users = accounts.list_users(conn)
+                if not users:
+                    print("No accounts yet. The first one is created on the sign-in page,")
+                    print("or with: meeting-assistant users add <name>")
+                for user in users:
+                    print(f"{user.username:<32} created {user.created_at}")
+            elif args.users_cmd == "add":
+                accounts.create_user(conn, args.username, _read_new_password())
+                print(f"Created {args.username}.")
+            elif args.users_cmd == "reset-password":
+                accounts.set_password(conn, args.username, _read_new_password())
+                print(f"Password changed for {args.username}; their sessions were signed out.")
+            elif args.users_cmd == "remove":
+                accounts.delete_user(conn, args.username)
+                print(f"Removed {args.username}.")
+    except accounts.AccountError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -631,6 +670,18 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", help=f"bind address (default {config.API_HOST})")
     serve.add_argument("--port", type=int, help=f"port (default {config.API_PORT})")
     serve.set_defaults(func=cmd_serve)
+
+    users = subparsers.add_parser("users", help="manage web UI accounts")
+    users_sub = users.add_subparsers(dest="users_cmd", required=True)
+    users_sub.add_parser("list", help="list accounts")
+    for name, text in (
+        ("add", "create an account (prompts for the password)"),
+        ("reset-password", "set a new password and sign the user out everywhere"),
+        ("remove", "delete an account"),
+    ):
+        sub = users_sub.add_parser(name, help=text)
+        sub.add_argument("username")
+    users.set_defaults(func=cmd_users)
 
     openapi = subparsers.add_parser("openapi", help="write the API's OpenAPI schema")
     openapi.add_argument(

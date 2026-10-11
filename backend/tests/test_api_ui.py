@@ -58,7 +58,7 @@ def test_unknown_api_paths_are_json_404s_not_the_ui(ui_client):
 def test_api_routes_still_win_over_the_fallback(ui_client):
     assert ui_client.get("/api/health").json()["ok"] in (True, False)
     response = ui_client.get("/api/runs")
-    assert response.status_code == 200
+    assert response.status_code == 401  # an API route (not the UI), needing sign-in
     assert response.headers["content-type"].startswith("application/json")
 
 
@@ -110,8 +110,10 @@ def test_ui_routes_are_not_part_of_the_api_schema(ui_client):
     assert all(path.startswith("/api/") for path in paths)
 
 
-def test_the_api_needs_no_credentials(ui_client):
-    """Authentication was removed by design: a single-user tool on a trusted
-    machine or network. Every route answers without an Authorization header."""
-    for path in ("/api/health", "/api/runs", "/api/audio", "/api/jobs", "/api/jobs/current"):
-        assert ui_client.get(path).status_code == 200, path
+def test_the_ui_and_sign_in_are_public_but_data_is_not(ui_client):
+    assert ui_client.get("/").status_code == 200
+    assert ui_client.get("/login").status_code == 200  # client-side route
+    assert ui_client.get("/api/health").status_code == 200
+    assert ui_client.get("/api/auth/status").status_code == 200
+    for path in ("/api/runs", "/api/audio", "/api/jobs", "/api/jobs/current", "/api/devices"):
+        assert ui_client.get(path).status_code == 401, path

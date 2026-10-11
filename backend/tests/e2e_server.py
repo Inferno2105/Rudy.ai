@@ -24,6 +24,8 @@ import time
 from pathlib import Path
 
 STAGE_PAUSE_SEC = 0.25
+E2E_USERNAME = "demo"
+E2E_PASSWORD = "demo-password-123"
 # A recording whose name contains this gets a long transcript, so the browser
 # test can exercise the transcript's virtualization with real layout.
 LONG_MEETING_MARKER = "long"
@@ -51,7 +53,14 @@ def _configure(root: Path) -> None:
     config.AUDIO_DIR = root / "audio"
     config.EVAL_DIR = root / "eval"
     config.INDEX_DB_PATH = root / "index.sqlite"
+    config.USERS_DB_PATH = root / "users.sqlite"
     config.AUDIO_DIR.mkdir(parents=True)
+    # An account the browser test signs in with (one already exists, so the
+    # sign-in page shows login rather than first-account setup).
+    from meeting_assistant import accounts
+
+    with accounts.open_accounts() as conn:
+        accounts.create_user(conn, E2E_USERNAME, E2E_PASSWORD)
 
 
 def stub_batch(audio_path, opts):

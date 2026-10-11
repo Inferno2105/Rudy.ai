@@ -142,6 +142,7 @@ def fake_llm():
 # ---------------------------------------------------------------------------
 # HTTP API
 # ---------------------------------------------------------------------------
+TEST_USER = {"username": "tester", "password": "correct-horse-battery"}
 
 
 class StubPipeline:
@@ -220,6 +221,12 @@ def api_env(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
     monkeypatch.setattr(config, "INDEX_DB_PATH", tmp_path / "index.sqlite")
+    monkeypatch.setattr(config, "USERS_DB_PATH", tmp_path / "users.sqlite")
+    # A fresh login throttle per test, so failures never leak between tests.
+    from meeting_assistant.api.auth import LoginThrottle
+    from meeting_assistant.api.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router, "throttle", LoginThrottle())
     (tmp_path / "audio").mkdir()
     return tmp_path
 
@@ -242,6 +249,9 @@ def client(api_env, stub_pipeline):
     # frontend has been built.
     app = create_app(jobs=jobs, preload_models=False, frontend_dist=api_env / "no-ui")
     with TestClient(app) as test_client:
+        # Signed in as the first account, created through the real setup flow.
+        response = test_client.post("/api/auth/setup", json=TEST_USER)
+        assert response.status_code == 201, response.text
         yield test_client
     if stub_pipeline.gate is not None:
         stub_pipeline.gate.set()

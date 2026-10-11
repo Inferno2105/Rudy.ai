@@ -20,8 +20,16 @@ function silentWav(seconds = 1, sampleRate = 16_000): Buffer {
   return buffer
 }
 
+// The account backend/tests/e2e_server.py creates at startup.
+const USER = { username: 'demo', password: 'demo-password-123' }
+
 async function openApp(page: Page) {
-  await page.goto('/')
+  await page.goto('/meetings')
+  // Signed out, so the app sends us to sign in, then back to the meetings.
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
+  await page.getByLabel('Username').fill(USER.username)
+  await page.getByLabel('Password', { exact: true }).fill(USER.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'Meetings', level: 1 })).toBeVisible()
 }
 
@@ -31,9 +39,25 @@ async function openNav(page: Page, name: string) {
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name }).click()
 }
 
-test('opens straight to the meetings list, with no login', async ({ page }) => {
-  await openApp(page)
-  await expect(page.getByLabel('API token')).toHaveCount(0)
+test('the landing page leads to sign-in, which refuses a wrong password', async ({ page }) => {
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Every voice in your meeting, understood.' }),
+  ).toBeVisible()
+  await page
+    .getByRole('link', { name: /Get started/ })
+    .first()
+    .click()
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
+  await page.getByLabel('Username').fill(USER.username)
+  await page.getByLabel('Password', { exact: true }).fill('not-the-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByText('Incorrect username or password.')).toBeVisible()
+})
+
+test('the data API refuses requests without a session', async ({ request }) => {
+  expect((await request.get('/api/runs')).status()).toBe(401)
+  expect((await request.get('/api/health')).status()).toBe(200)
 })
 
 test('upload a recording, process it, and read the results', async ({ page }) => {

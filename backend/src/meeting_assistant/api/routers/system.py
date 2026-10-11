@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from meeting_assistant import __version__, config
+from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.deps import get_db
 from meeting_assistant.api.schemas.eval import EvalReport
 from meeting_assistant.api.schemas.system import (
@@ -30,10 +31,13 @@ log = get_logger(__name__)
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".flac"})
 _COPY_CHUNK = 1 << 20
 
-router = APIRouter(tags=["system"])
+# Health is public, so the sign-in page can tell "server down" from
+# "not signed in". Everything else needs a signed-in user.
+public = APIRouter(tags=["system"])
+router = APIRouter(tags=["system"], dependencies=[Depends(require_user)])
 
 
-@router.get("/health", response_model=Health)
+@public.get("/health", response_model=Health)
 def health() -> Health:
     """The version, and whether setup is complete (with what is missing)."""
     problems = config.list_problems(require_hf_token=True, require_ffmpeg=True)

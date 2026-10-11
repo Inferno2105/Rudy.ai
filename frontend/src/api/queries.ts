@@ -10,6 +10,7 @@ import type { ArtifactName } from './types'
 
 export const keys = {
   health: ['health'] as const,
+  auth: ['auth'] as const,
   runs: (filters: RunFilters) => ['runs', filters] as const,
   allRuns: ['runs'] as const,
   run: (runId: string) => ['run', runId] as const,
@@ -24,6 +25,58 @@ export const keys = {
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false
   return failureCount < 2
+}
+
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+export function useAuthStatus() {
+  return useQuery({
+    queryKey: keys.auth,
+    queryFn: ({ signal }) => unwrap(api.GET('/api/auth/status', { signal })),
+    staleTime: 60_000,
+  })
+}
+
+/** After signing in or out, everything cached belongs to the previous state. */
+function useResetAfterAuth() {
+  const client = useQueryClient()
+  return () => {
+    client.removeQueries({ predicate: (query) => query.queryKey[0] !== 'health' })
+  }
+}
+
+export function useLogin() {
+  const reset = useResetAfterAuth()
+  return useMutation({
+    mutationFn: (body: { username: string; password: string }) =>
+      unwrap(api.POST('/api/auth/login', { body })),
+    onSuccess: reset,
+  })
+}
+
+export function useSetup() {
+  const reset = useResetAfterAuth()
+  return useMutation({
+    mutationFn: (body: { username: string; password: string }) =>
+      unwrap(api.POST('/api/auth/setup', { body })),
+    onSuccess: reset,
+  })
+}
+
+export function useLogout() {
+  const reset = useResetAfterAuth()
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/auth/logout')),
+    onSettled: reset,
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { current_password: string; new_password: string }) =>
+      unwrap(api.POST('/api/auth/password', { body })),
+  })
 }
 
 export function useHealth() {

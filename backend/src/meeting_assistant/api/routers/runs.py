@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from meeting_assistant import config
+from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs, get_run_paths
 from meeting_assistant.api.events import run_events
 from meeting_assistant.api.jobs import BusyError, JobManager
@@ -28,7 +29,7 @@ from meeting_assistant.io_utils import read_json
 from meeting_assistant.paths import ARTIFACTS, RunPaths
 from meeting_assistant.store import queries
 
-router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(require_user)])
 
 ArtifactName = Literal[tuple(ARTIFACTS)]  # type: ignore[valid-type]
 
