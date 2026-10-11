@@ -87,6 +87,8 @@ DIARIZATION_MODEL: str = os.environ.get("DIARIZATION_MODEL", "pyannote/speaker-d
 # embedding space the diarizer already trusts, and in testing pyannote/embedding
 # returned a 403 (gated separately) for a token that this model accepted fine.
 EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "pyannote/wespeaker-voxceleb-resnet34-LM")
+# Where pyannote (diarization and speaker embeddings) runs: "cpu" or "cuda".
+DIARIZATION_DEVICE: str = os.environ.get("DIARIZATION_DEVICE", "cpu")
 
 # Cross-chunk speaker identity (diarize.speaker_registry). Exposed as settings
 # rather than constants because the similarity threshold in particular is a
@@ -207,6 +209,11 @@ def output_affecting_settings() -> dict[str, str]:
         "speaker_similarity_threshold": str(SPEAKER_SIMILARITY_THRESHOLD),
         "speaker_ema_alpha": str(SPEAKER_EMA_ALPHA),
         "ollama_model": OLLAMA_MODEL,
+        # Only recorded when it differs from the default: GPU and CPU pyannote
+        # are not bit-identical, so a GPU run must hash differently, but adding
+        # the key unconditionally would change the hash of every existing
+        # (CPU) run and break comparisons with them.
+        **({"diarization_device": DIARIZATION_DEVICE} if DIARIZATION_DEVICE != "cpu" else {}),
     }
 
 

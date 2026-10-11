@@ -70,7 +70,12 @@ def build_inference(model: Model) -> Inference:
     compares by cosine similarity. A sliding-window sequence would need its own
     aggregation step before it could be compared at all.
     """
-    return Inference(model, window="whole")
+    inference = Inference(model, window="whole")
+    if config.DIARIZATION_DEVICE != "cpu":
+        import torch
+
+        inference.to(torch.device(config.DIARIZATION_DEVICE))
+    return inference
 
 
 def embed_file(inference: Inference, audio_path: str | Path) -> np.ndarray:

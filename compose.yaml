@@ -1,0 +1,84 @@
+# Meeting Assistant on Docker: the app (UI + API) and Ollama, both on the GPU.
+#
+#   Start:   powershell -File docker/up.ps1      (records the git commit, then up)
+#   Logs:    docker compose logs -f app
+#   Stop:    docker compose down                 (data and models are kept)
+#
+# Open http://127.0.0.1:8000/ . Only this computer can reach it (see "ports").
+name: meeting-assistant
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  app:
+    <<: *gpu
+    build:
+      context: .
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_DIRTY: ${GIT_DIRTY:-unknown}
+        GIT_BRANCH: ${GIT_BRANCH:-}
+    image: meeting-assistant:latest
+    # HF_TOKEN and any other settings come from .env (never baked into the image).
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Container paths and services; these override anything in .env.
+      DATA_DIR: /app/data
+      FFMPEG_BIN: ""
+      OLLAMA_HOST: http://ollama:11434
+      # GPU configuration. A different config hash from the CPU (int8) runs,
+      # so the evaluation never mixes the two. int8_float16 keeps Whisper
+      # small enough on an 8 GB card to leave room for the language model.
+      WHISPER_DEVICE: cuda
+      WHISPER_COMPUTE_TYPE: int8_float16
+      DIARIZATION_DEVICE: cuda
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/data # the same recordings, runs and accounts as the native app
+      - model-cache:/cache # Whisper and pyannote downloads, kept between restarts
+    depends_on:
+      ollama-model:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ollama:
+    <<: *gpu
+    image: ollama/ollama:latest
+    environment:
+      # Unload the model soon after use, so Whisper has the GPU memory back.
+      OLLAMA_KEEP_ALIVE: 2m
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # One-shot: downloads the language model into the ollama volume (first start
+  # only; later starts finish in a second because it is already there).
+  ollama-model:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:7b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  model-cache:
+  ollama:

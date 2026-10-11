@@ -18,6 +18,8 @@ keywords = ["speech-recognition", "diarization", "code-mixing", "hinglish", "mee
 # Windows, which forces a C compiler toolchain into the setup path.
 dependencies = [
     "faster-whisper>=1.2",
+    # faster-whisper 1.2 passes `metadata_errors` to av.open(), which PyAV 19 removed.
+    "av>=11,<19",
     "pyannote.audio>=4.0",
     "webrtcvad-wheels>=2.0.14",
     "sounddevice>=0.5",

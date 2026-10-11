@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -57,9 +58,20 @@ def git_state() -> dict[str, Any]:
     hash alone does not identify the code that ran, which matters when a figure
     is later traced back — better to know the caveat than to have it invisible.
     """
+    commit = _git("rev-parse", "HEAD")
+    if commit is None and os.environ.get("MEETING_ASSISTANT_GIT_COMMIT"):
+        # No repository here (a Docker image): use the commit the image was
+        # built from, recorded at build time (see docker/build.ps1).
+        dirty = os.environ.get("MEETING_ASSISTANT_GIT_DIRTY", "").lower()
+        return {
+            "commit": os.environ["MEETING_ASSISTANT_GIT_COMMIT"],
+            "branch": os.environ.get("MEETING_ASSISTANT_GIT_BRANCH") or None,
+            "dirty": {"true": True, "false": False}.get(dirty),
+            "source": "build",
+        }
     status = _git("status", "--porcelain")
     return {
-        "commit": _git("rev-parse", "HEAD"),
+        "commit": commit,
         "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
         "dirty": bool(status) if status is not None else None,
     }

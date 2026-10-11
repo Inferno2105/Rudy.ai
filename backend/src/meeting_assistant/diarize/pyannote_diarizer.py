@@ -64,6 +64,11 @@ def load_pipeline(hf_token: str | None = None, model: str | None = None) -> Pipe
     log.info("Loading diarization pipeline: %s", model)
     started = time.perf_counter()
     pipeline = Pipeline.from_pretrained(model, token=hf_token)
+    if config.DIARIZATION_DEVICE != "cpu":
+        import torch
+
+        pipeline.to(torch.device(config.DIARIZATION_DEVICE))
+        log.info("Diarization pipeline on %s", config.DIARIZATION_DEVICE)
     log.info("Diarization pipeline loaded in %.1fs", time.perf_counter() - started)
     return pipeline
 

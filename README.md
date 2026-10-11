@@ -59,6 +59,17 @@ cd frontend; npm install; npm run build; cd ..   # the web UI (Node 22+)
 You also need to accept the terms for the gated pyannote model repositories on
 Hugging Face; `doctor` will tell you which ones if access fails.
 
+## Run with Docker
+
+Everything (UI, API, speech models on the GPU, and Ollama) in containers:
+
+```powershell
+powershell -File docker/up.ps1     # then open http://127.0.0.1:8000/
+```
+
+See [docs/docker.md](docs/docker.md) for requirements, GPU memory, data
+volumes and limitations (no live microphone inside Docker on Windows).
+
 ## Usage
 
 ### Web UI
