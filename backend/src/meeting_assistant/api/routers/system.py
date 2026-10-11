@@ -12,7 +12,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from meeting_assistant import __version__, config
-from meeting_assistant.api.auth import require_token
 from meeting_assistant.api.deps import get_db
 from meeting_assistant.api.schemas.eval import EvalReport
 from meeting_assistant.api.schemas.system import (
@@ -31,14 +30,12 @@ log = get_logger(__name__)
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".flac"})
 _COPY_CHUNK = 1 << 20
 
-public = APIRouter(tags=["system"])
-router = APIRouter(tags=["system"], dependencies=[Depends(require_token)])
+router = APIRouter(tags=["system"])
 
 
-@public.get("/health", response_model=Health)
+@router.get("/health", response_model=Health)
 def health() -> Health:
-    """Unauthenticated, so a client can tell "server down" from "bad token".
-    Deliberately reveals nothing but the version and whether setup is complete."""
+    """The version, and whether setup is complete (with what is missing)."""
     problems = config.list_problems(require_hf_token=True, require_ffmpeg=True)
     return Health(version=__version__, ok=not problems, problems=problems)
 

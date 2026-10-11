@@ -17,7 +17,6 @@ import type {
   TranscriptResponse,
 } from '../api/types'
 
-export const TOKEN = 'test-token-0123456789abcdef0123456789abcdef'
 export const RUN_ID = '20261001-152823_batch_test_hindi'
 
 export const health: Health = { version: '0.1.0', ok: true, problems: [] }

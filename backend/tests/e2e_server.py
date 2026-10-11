@@ -13,13 +13,11 @@ Usage (Playwright starts it; see ``frontend/playwright.config.ts``)::
 
     python backend/tests/e2e_server.py --port 8765
 
-The API token comes from ``E2E_API_TOKEN``.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import tempfile
 import time
@@ -46,14 +44,13 @@ TAGGED = [
 ]
 
 
-def _configure(root: Path, token: str) -> None:
+def _configure(root: Path) -> None:
     from meeting_assistant import config
 
     config.RUNS_DIR = root / "runs"
     config.AUDIO_DIR = root / "audio"
     config.EVAL_DIR = root / "eval"
     config.INDEX_DB_PATH = root / "index.sqlite"
-    config.API_TOKEN = token
     config.AUDIO_DIR.mkdir(parents=True)
 
 
@@ -142,13 +139,9 @@ def main() -> None:
     parser.add_argument("--dist", type=Path, default=None, help="built UI (default: frontend/dist)")
     args = parser.parse_args()
 
-    token = os.environ.get("E2E_API_TOKEN")
-    if not token:
-        raise SystemExit("E2E_API_TOKEN is not set")
-
     root = Path(tempfile.mkdtemp(prefix="meeting-assistant-e2e-"))
     try:
-        _configure(root, token)
+        _configure(root)
 
         import uvicorn
 

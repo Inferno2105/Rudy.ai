@@ -50,7 +50,7 @@ describe('run detail', () => {
     renderApp(RUN_PATH)
     expect(await screen.findByRole('button', { name: 'Play from 0:03' })).toBeInTheDocument()
     const player = await screen.findByLabelText('Meeting recording')
-    expect(player.getAttribute('src')).toContain('/audio?ticket=')
+    expect(player.getAttribute('src')).toMatch(/\/api\/runs\/[^/]+\/audio$/)
   })
 
   it('explains a missing summary with the stage error instead of showing nothing', async () => {

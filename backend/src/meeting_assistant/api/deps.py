@@ -56,7 +56,12 @@ def get_jobs(request: Request) -> JobManager:
 
 
 def get_db() -> Iterator[sqlite3.Connection]:
-    """One connection per request: sqlite3 connections are not shared across
-    threads, and FastAPI runs sync handlers on a thread pool."""
-    with open_db(config.INDEX_DB_PATH) as conn:
+    """One connection per request, never shared between requests.
+
+    FastAPI may run this dependency's setup and teardown on different pool
+    threads, so the connection is opened with ``cross_thread``: without it,
+    closing it after the response raised sqlite3.ProgrammingError in the
+    server log.
+    """
+    with open_db(config.INDEX_DB_PATH, cross_thread=True) as conn:
         yield conn

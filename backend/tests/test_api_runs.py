@@ -95,6 +95,12 @@ def test_source_audio_is_served_for_a_batch_run(client, finished_run, audio_file
     assert response.content == audio_file.read_bytes()
 
 
+def test_source_audio_supports_range_requests_so_the_player_can_seek(client, finished_run):
+    response = client.get(f"/api/runs/{finished_run}/audio", headers={"Range": "bytes=0-9"})
+    assert response.status_code == 206
+    assert len(response.content) == 10
+
+
 def test_source_audio_outside_the_audio_directory_is_never_served(
     client, finished_run, api_env, tmp_path
 ):

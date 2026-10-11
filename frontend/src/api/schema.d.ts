@@ -13,8 +13,7 @@ export interface paths {
         };
         /**
          * Health
-         * @description Unauthenticated, so a client can tell "server down" from "bad token".
-         *     Deliberately reveals nothing but the version and whether setup is complete.
+         * @description The version, and whether setup is complete (with what is missing).
          */
         get: operations["health_api_health_get"];
         put?: never;
@@ -319,20 +318,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/runs/{run_id}/audio-url": {
+    "/api/runs/{run_id}/audio": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Get Run Audio Url
-         * @description A short-lived URL an ``<audio>`` element can play without the API token.
+         * Get Run Audio
+         * @description The run's source recording, for playback alongside its transcript.
+         *
+         *     Supports HTTP Range requests, so the player can seek.
          */
-        post: operations["get_run_audio_url_api_runs__run_id__audio_url_post"];
+        get: operations["get_run_audio_api_runs__run_id__audio_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -351,29 +352,6 @@ export interface paths {
          * @description Server-sent progress events; see ``meeting_assistant.api.events``.
          */
         get: operations["stream_events_api_runs__run_id__events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/runs/{run_id}/audio": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Run Audio
-         * @description The run's source recording, for playback alongside its transcript.
-         *
-         *     Accepts the bearer token (scripts) or a media ticket (an ``<audio>``
-         *     element). Supports HTTP Range requests, so the player can seek.
-         */
-        get: operations["get_run_audio_api_runs__run_id__audio_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -535,19 +513,6 @@ export interface components {
             size_bytes: number;
             /** Duration Sec */
             duration_sec?: number | null;
-        };
-        /** AudioUrl */
-        AudioUrl: {
-            /**
-             * Url
-             * @description Relative URL with a signed, run-scoped ticket
-             */
-            url: string;
-            /**
-             * Expires At
-             * @description Unix timestamp after which the URL stops working
-             */
-            expires_at: number;
         };
         /** BatchRequest */
         BatchRequest: {
@@ -1154,9 +1119,7 @@ export interface operations {
     devices_api_devices_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1171,23 +1134,12 @@ export interface operations {
                     "application/json": components["schemas"]["InputDevice"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_audio_api_audio_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1202,23 +1154,12 @@ export interface operations {
                     "application/json": components["schemas"]["AudioFile"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     upload_audio_api_uploads_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1251,9 +1192,7 @@ export interface operations {
     rebuild_index_api_index_rebuild_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1268,23 +1207,12 @@ export interface operations {
                     "application/json": components["schemas"]["IndexRebuildResult"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     eval_report_api_eval_report_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1299,15 +1227,6 @@ export interface operations {
                     "application/json": components["schemas"]["EvalReport"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_runs_api_runs_get: {
@@ -1318,9 +1237,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1349,9 +1266,7 @@ export interface operations {
     start_batch_api_runs_batch_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1384,9 +1299,7 @@ export interface operations {
     get_run_api_runs__run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1417,9 +1330,7 @@ export interface operations {
     resume_run_api_runs__run_id__resume_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1454,9 +1365,7 @@ export interface operations {
     get_transcript_api_runs__run_id__transcript_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1487,9 +1396,7 @@ export interface operations {
     get_summary_api_runs__run_id__summary_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1520,9 +1427,7 @@ export interface operations {
     get_action_items_api_runs__run_id__action_items_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1553,9 +1458,7 @@ export interface operations {
     get_speakers_api_runs__run_id__speakers_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1586,9 +1489,7 @@ export interface operations {
     get_metadata_api_runs__run_id__metadata_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1619,9 +1520,7 @@ export interface operations {
     get_raw_artifact_api_runs__run_id__artifacts__name__get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 name: "transcript" | "diarization" | "aligned" | "merged" | "tagged" | "hinglish" | "summary" | "action_items" | "speaker_stats" | "metadata";
                 run_id: string;
@@ -1650,12 +1549,10 @@ export interface operations {
             };
         };
     };
-    get_run_audio_url_api_runs__run_id__audio_url_post: {
+    get_run_audio_api_runs__run_id__audio_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1668,9 +1565,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["AudioUrl"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1686,9 +1581,7 @@ export interface operations {
     stream_events_api_runs__run_id__events_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -1716,53 +1609,10 @@ export interface operations {
             };
         };
     };
-    get_run_audio_api_runs__run_id__audio_get: {
-        parameters: {
-            query?: {
-                /** @description From POST .../audio-url */
-                ticket?: string | null;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Neither a valid token nor a valid ticket */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_jobs_api_jobs_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1777,23 +1627,12 @@ export interface operations {
                     "application/json": components["schemas"]["Job"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     current_job_api_jobs_current_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1808,23 +1647,12 @@ export interface operations {
                     "application/json": components["schemas"]["Job"] | null;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     start_live_api_live_start_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1857,9 +1685,7 @@ export interface operations {
     stop_live_api_live_stop_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1872,15 +1698,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Job"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

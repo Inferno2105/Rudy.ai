@@ -3,7 +3,6 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
 
-import { resetTokenForTests } from '../auth/token'
 import { server } from './server'
 
 // Lazily loaded routes are transformed on first import under Vitest, which
@@ -37,7 +36,6 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
   window.sessionStorage.clear()
   window.localStorage.clear()
-  resetTokenForTests()
 })
 afterEach(() => {
   cleanup()

@@ -19,7 +19,7 @@ npm run build      # then `meeting-assistant serve` serves it
 ## Development
 
 ```powershell
-meeting-assistant serve            # backend on :8000 (needs API_TOKEN in .env)
+meeting-assistant serve            # backend on :8000
 npm run dev                        # UI on :5173, proxying /api to :8000
 ```
 
@@ -50,15 +50,15 @@ than leaving them testing a contract the server no longer has.
 
 ## Design notes
 
-- **Auth.** The token is entered once and kept in `sessionStorage` (or
-  `localStorage` if "remember on this device" is chosen). It travels only in the
-  `Authorization` header. Any 401 signs out and explains why.
-- **Progress over SSE.** `EventSource` cannot send headers, so `src/api/sse.ts`
-  reads the `/events` stream with `fetch` and parses it itself, reconnecting with
-  backoff. Segments are spliced by their `start_index`, so a reconnect (where
-  the server replays from zero) never duplicates them.
-- **Audio playback** uses a short-lived, run-scoped signed URL from
-  `POST /runs/{id}/audio-url`; the token never appears in a URL.
+- **No login.** The API has no authentication by design (a single-user tool on
+  a trusted machine or network), so the client sends no credentials.
+- **Progress over SSE.** `src/api/sse.ts` reads the `/events` stream with
+  `fetch` and parses it itself, for an explicit abort on unmount, a chosen
+  backoff and a clean stop on `end`. Segments are spliced by their
+  `start_index`, so a reconnect (where the server replays from zero) never
+  duplicates them.
+- **Audio playback** streams `GET /runs/{id}/audio` directly; the server
+  supports Range requests, so seeking works.
 - **Absent is not empty.** A 404 for an artifact renders as "not produced", with
   the stage's recorded error, never as an empty summary or table.
 - **Numbers are displayed, not computed.** Evaluation metrics are shown exactly
@@ -71,7 +71,6 @@ than leaving them testing a contract the server no longer has.
 ```
 src/
   api/          openapi.json, schema.d.ts (generated), client, queries, SSE
-  auth/         token storage and the token screen
   components/   app shell, transcript, stage progress, audio player; ui/ primitives
   pages/        Meetings, New run, Run detail (tabs), Live, Evaluation
   lib/          formatting, speaker colours, language tags, stage helpers

@@ -23,12 +23,20 @@ def _schema_sql() -> str:
     )
 
 
-def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
-    """Open a connection with row access by column name and foreign keys enforced."""
+def connect(
+    db_path: str | Path | None = None, *, cross_thread: bool = False
+) -> sqlite3.Connection:
+    """Open a connection with row access by column name and foreign keys enforced.
+
+    ``cross_thread`` lifts sqlite3's same-thread check for a connection that is
+    used by one request at a time but may be opened and closed on different
+    threads (FastAPI runs a sync dependency's setup and teardown on whichever
+    pool thread is free). It never makes sharing a connection safe.
+    """
     path = Path(db_path) if db_path is not None else config.INDEX_DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=not cross_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -41,7 +49,9 @@ def apply_schema(conn: sqlite3.Connection) -> None:
 
 
 @contextmanager
-def open_db(db_path: str | Path | None = None) -> Iterator[sqlite3.Connection]:
+def open_db(
+    db_path: str | Path | None = None, *, cross_thread: bool = False
+) -> Iterator[sqlite3.Connection]:
     """Open a connection with the schema applied, committing on a clean exit.
 
     Usage::
@@ -49,7 +59,7 @@ def open_db(db_path: str | Path | None = None) -> Iterator[sqlite3.Connection]:
         with open_db() as conn:
             conn.execute(...)
     """
-    conn = connect(db_path)
+    conn = connect(db_path, cross_thread=cross_thread)
     try:
         apply_schema(conn)
         yield conn

@@ -5,20 +5,11 @@ import * as f from './fixtures'
 
 export const API = (path: string) => `${window.location.origin}${path}`
 
-/** Reject requests without the fixture token, like the real server. */
-function authorized(request: Request): boolean {
-  return request.headers.get('Authorization') === `Bearer ${f.TOKEN}`
-}
-
-const unauthorized = () =>
-  HttpResponse.json({ detail: 'Missing or invalid API token' }, { status: 401 })
-
 const notFound = (detail: string) => HttpResponse.json({ detail }, { status: 404 })
 
 /** A happy-path API: one completed-ish batch run with every artifact but the LLM ones. */
 export const defaultHandlers = [
   http.get(API('/api/health'), () => HttpResponse.json(f.health)),
-  http.all(API('/api/*'), ({ request }) => (authorized(request) ? undefined : unauthorized())),
   http.get(API('/api/jobs/current'), () => HttpResponse.json(null)),
   http.get(API('/api/runs'), () => HttpResponse.json(f.runSummaries)),
   http.get(API('/api/runs/:runId'), ({ params }) =>
@@ -32,12 +23,6 @@ export const defaultHandlers = [
   http.get(API('/api/runs/:runId/speakers'), () => HttpResponse.json(f.speakers)),
   http.get(API('/api/runs/:runId/metadata'), () => HttpResponse.json(f.metadata)),
   http.get(API('/api/runs/:runId/artifacts/tagged'), () => HttpResponse.json(f.taggedSegments)),
-  http.post(API('/api/runs/:runId/audio-url'), ({ params }) =>
-    HttpResponse.json({
-      url: `/api/runs/${String(params.runId)}/audio?ticket=1.sig`,
-      expires_at: 9_999_999_999,
-    }),
-  ),
   http.get(API('/api/audio'), () =>
     HttpResponse.json([{ name: 'test_hindi.wav', size_bytes: 1097694, duration_sec: 34.3 }]),
   ),

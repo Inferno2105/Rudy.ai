@@ -1,8 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
-import { getToken, setToken } from '../auth/token'
-import { TOKEN, RUN_ID } from '../test/fixtures'
+import { RUN_ID } from '../test/fixtures'
 import { API, server, sseResponse } from '../test/server'
 import { followRunEvents, SseParser, type RunEvent, type StreamStatus } from './sse'
 import { initialRunEvents, runEventsReducer } from './useRunEvents'
@@ -77,12 +76,9 @@ describe('followRunEvents', () => {
     return { events, statuses }
   }
 
-  it('sends the token in a header and stops after `end`', async () => {
-    setToken(TOKEN, false)
-    let authorization: string | null = null
+  it('reads events until `end`, then stops', async () => {
     server.use(
-      http.get(eventsUrl, ({ request }) => {
-        authorization = request.headers.get('Authorization')
+      http.get(eventsUrl, () => {
         return sseResponse([
           ['manifest', { status: 'partial', stages: [], extra: {} }],
           ['end', { run_id: RUN_ID }],
@@ -90,13 +86,11 @@ describe('followRunEvents', () => {
       }),
     )
     const { events, statuses } = await follow()
-    expect(authorization).toBe(`Bearer ${TOKEN}`)
     expect(events.map((e) => e.type)).toEqual(['manifest', 'end'])
     expect(statuses.at(-1)).toBe('closed')
   })
 
   it('reconnects when the stream drops before `end`', async () => {
-    setToken(TOKEN, false)
     let attempts = 0
     server.use(
       http.get(eventsUrl, () => {
@@ -112,16 +106,7 @@ describe('followRunEvents', () => {
     expect(events.at(-1)?.type).toBe('end')
   })
 
-  it('signs out on 401 instead of retrying forever', async () => {
-    setToken(TOKEN, false)
-    server.use(http.get(eventsUrl, () => HttpResponse.json({ detail: 'no' }, { status: 401 })))
-    const { statuses } = await follow()
-    expect(statuses.at(-1)).toBe('closed')
-    expect(getToken()).toBeNull()
-  })
-
   it('gives up on a run that does not exist', async () => {
-    setToken(TOKEN, false)
     server.use(http.get(eventsUrl, () => HttpResponse.json({ detail: 'nope' }, { status: 404 })))
     const { statuses } = await follow()
     expect(statuses.at(-1)).toBe('failed')

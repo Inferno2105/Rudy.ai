@@ -64,18 +64,20 @@ Hugging Face; `doctor` will tell you which ones if access fails.
 ### Web UI
 
 ```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"   # put the result in .env as API_TOKEN=...
-meeting-assistant serve                                         # UI at http://127.0.0.1:8000/
-meeting-assistant serve --host 0.0.0.0                          # reachable from other devices on the LAN
+meeting-assistant serve                   # UI at http://127.0.0.1:8000/ (this machine only)
+meeting-assistant serve --host 0.0.0.0    # also reachable from other devices on the network
 ```
 
 The UI lists every meeting, processes uploaded recordings with live stage
 progress, records live sessions from the server's microphone, and shows each
 run's transcript (Romanized or original script, with click-to-seek audio),
 summary, action items, speaker statistics and full provenance, plus the
-evaluation report. Every route except `/api/health` requires the token; the
-browser asks for it once and keeps it for the session. See `frontend/README.md`
-for development.
+evaluation report. See `frontend/README.md` for development.
+
+**There is no login.** The app is a single-user tool. By default it listens
+only on this machine. With `--host 0.0.0.0`, anyone who can reach the address
+can read every transcript, upload files and start this machine's microphone,
+so only do that on a network you trust.
 
 ### Command line
 

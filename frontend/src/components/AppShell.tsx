@@ -1,21 +1,9 @@
-import {
-  BarChart3,
-  ListMusic,
-  LogOut,
-  Menu,
-  Mic,
-  Monitor,
-  Moon,
-  Sun,
-  Upload,
-  X,
-} from 'lucide-react'
+import { BarChart3, ListMusic, Menu, Mic, Monitor, Moon, Sun, Upload, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
 import { useCurrentJob, useHealth } from '../api/queries'
 import { isJobActive } from '../api/types'
-import { clearToken } from '../auth/token'
 import { useTheme, type ThemePreference } from '../lib/theme'
 import { cn } from '../lib/utils'
 import { JobStateBadge } from './status'
@@ -136,12 +124,7 @@ function SidebarFooter() {
   return (
     <div className="space-y-3">
       <HealthIndicator />
-      <div className="flex items-center gap-1">
-        <ThemeToggle />
-        <Button variant="ghost" size="sm" onClick={() => clearToken('signed-out')}>
-          <LogOut aria-hidden /> Sign out
-        </Button>
-      </div>
+      <ThemeToggle />
     </div>
   )
 }

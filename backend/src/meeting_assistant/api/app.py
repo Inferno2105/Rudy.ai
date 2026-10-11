@@ -1,8 +1,9 @@
 """FastAPI application factory.
 
-Run with ``meeting-assistant serve``, which refuses to start without an
-``API_TOKEN``; ``create_app`` itself does not check, so tests can build an app
-with a token patched in.
+Run with ``meeting-assistant serve``. The API has **no authentication**: it is
+meant for a single user on a trusted machine or network. Anyone who can reach
+the port can read every transcript and start the server's microphone, which is
+why ``serve`` binds to 127.0.0.1 by default and warns when bound elsewhere.
 
 **Startup order matters here for the same reason it does in the CLI.** The
 lifespan registers FFmpeg's DLL directory and then imports the diarization
@@ -153,18 +154,17 @@ def create_app(
         title="Meeting Assistant API",
         version=__version__,
         description="Local Hindi-English meeting assistant: runs, transcripts, summaries, "
-        "action items, live recording and evaluation. All routes except /api/health need "
-        "`Authorization: Bearer <API_TOKEN>`.",
+        "action items, live recording and evaluation. No authentication: run it on a "
+        "trusted machine or network.",
         lifespan=lifespan,
     )
     app.state.jobs = jobs or JobManager()
 
-    # Bearer tokens travel in a header, not a cookie, so credentials stay off.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.API_CORS_ORIGINS,
         allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Content-Type"],
     )
 
     @app.middleware("http")
@@ -188,10 +188,8 @@ def create_app(
     async def _config_error(_: Request, exc: ConfigError) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
-    app.include_router(system_router.public, prefix="/api")
     app.include_router(system_router.router, prefix="/api")
     app.include_router(runs_router.router, prefix="/api")
-    app.include_router(runs_router.media_router, prefix="/api")
     app.include_router(jobs_router.router, prefix="/api")
     _install_openapi(app)
 

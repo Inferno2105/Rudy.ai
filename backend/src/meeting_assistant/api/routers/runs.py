@@ -6,23 +6,16 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from meeting_assistant import config
-from meeting_assistant.api.auth import (
-    issue_media_ticket,
-    media_ticket_is_valid,
-    require_token,
-    token_is_valid,
-)
 from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs, get_run_paths
 from meeting_assistant.api.events import run_events
 from meeting_assistant.api.jobs import BusyError, JobManager
 from meeting_assistant.api.schemas.jobs import BatchRequest, JobAccepted, ResumeRequest
 from meeting_assistant.api.schemas.runs import (
     ActionItemsResponse,
-    AudioUrl,
     MetadataResponse,
     RunDetail,
     RunSummary,
@@ -35,11 +28,7 @@ from meeting_assistant.io_utils import read_json
 from meeting_assistant.paths import ARTIFACTS, RunPaths
 from meeting_assistant.store import queries
 
-router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(require_token)])
-
-# Routes that authenticate themselves because a browser element, not script,
-# makes the request (see ``meeting_assistant.api.auth`` on media tickets).
-media_router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(prefix="/runs", tags=["runs"])
 
 ArtifactName = Literal[tuple(ARTIFACTS)]  # type: ignore[valid-type]
 
@@ -205,37 +194,12 @@ def _source_audio(paths: RunPaths) -> Path:
     return candidate
 
 
-@router.post("/{run_id}/audio-url", response_model=AudioUrl)
-def get_run_audio_url(paths: RunPaths = Depends(get_run_paths)) -> AudioUrl:
-    """A short-lived URL an ``<audio>`` element can play without the API token."""
-    _source_audio(paths)  # 404 now rather than a broken player later
-    ticket, expires = issue_media_ticket(paths.run_id)
-    return AudioUrl(
-        url=f"/api/runs/{paths.run_id}/audio?ticket={ticket}", expires_at=expires
-    )
-
-
-@media_router.get(
-    "/{run_id}/audio",
-    response_class=FileResponse,
-    responses={401: {"description": "Neither a valid token nor a valid ticket"}},
-)
-def get_run_audio(
-    paths: RunPaths = Depends(get_run_paths),
-    ticket: str | None = Query(default=None, description="From POST .../audio-url"),
-    authorization: str | None = Header(default=None),
-) -> FileResponse:
+@router.get("/{run_id}/audio", response_class=FileResponse)
+def get_run_audio(paths: RunPaths = Depends(get_run_paths)) -> FileResponse:
     """The run's source recording, for playback alongside its transcript.
 
-    Accepts the bearer token (scripts) or a media ticket (an ``<audio>``
-    element). Supports HTTP Range requests, so the player can seek.
+    Supports HTTP Range requests, so the player can seek.
     """
-    if not token_is_valid(authorization) and not media_ticket_is_valid(paths.run_id, ticket):
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "Missing or invalid API token or media ticket",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
     return FileResponse(_source_audio(paths))
 
 

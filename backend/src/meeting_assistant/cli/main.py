@@ -105,22 +105,6 @@ def _check_ollama() -> Check:
     )
 
 
-def _check_api_token() -> Check:
-    problems = config.list_problems(
-        require_hf_token=False, require_ffmpeg=False, require_api_token=True
-    )
-    if not problems:
-        return Check("API token", OK, f"set ({len(config.API_TOKEN)} chars)")
-    # WARN, not FAIL: only `serve` needs it; the CLI pipeline runs without one.
-    return Check(
-        "API token",
-        WARN,
-        "not set or too short (needed only for `meeting-assistant serve`)",
-        "python -c \"import secrets; print(secrets.token_urlsafe(32))\"   then add "
-        "API_TOKEN=... to .env",
-    )
-
-
 def _check_imports() -> list[Check]:
     """Import the heavy dependencies, in an order that respects the DLL bootstrap.
 
@@ -184,7 +168,6 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         _check_env_file(),
         _check_hf_token(),
         _check_ffmpeg(),
-        _check_api_token(),
     ]
     if not args.quick:
         checks.extend(_check_imports())
@@ -509,17 +492,7 @@ def cmd_live(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Run the HTTP API. Refuses to start without a usable API token."""
-    from meeting_assistant.errors import ConfigError
-
-    try:
-        config.validate_config(
-            require_hf_token=False, require_ffmpeg=False, require_api_token=True
-        )
-    except ConfigError as exc:
-        print(f"Refusing to start the API: {exc}", file=sys.stderr)
-        return 1
-
+    """Run the HTTP API and web UI. There is no authentication."""
     import uvicorn
 
     host = args.host or config.API_HOST
@@ -531,8 +504,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print(f"Web UI not built ({config.FRONTEND_DIST}); run `npm run build` in frontend/")
     if host not in ("127.0.0.1", "localhost", "::1"):
         print(
-            "Reachable from other machines on this network; every route but "
-            "/api/health requires the API token."
+            "WARNING: reachable from other machines on this network, with no "
+            "authentication. Anyone who can reach this address can read every "
+            "transcript, upload files and start this machine's microphone. "
+            "Only do this on a network you trust."
         )
     uvicorn.run(
         "meeting_assistant.api.app:create_app",
@@ -652,7 +627,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_parser.set_defaults(func=cmd_eval)
 
-    serve = subparsers.add_parser("serve", help="run the HTTP API (needs API_TOKEN in .env)")
+    serve = subparsers.add_parser("serve", help="run the HTTP API and web UI")
     serve.add_argument("--host", help=f"bind address (default {config.API_HOST})")
     serve.add_argument("--port", type=int, help=f"port (default {config.API_PORT})")
     serve.set_defaults(func=cmd_serve)

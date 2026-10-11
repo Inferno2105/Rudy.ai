@@ -142,7 +142,6 @@ def fake_llm():
 # ---------------------------------------------------------------------------
 # HTTP API
 # ---------------------------------------------------------------------------
-API_TOKEN = "test-token-" + "x" * 32
 
 
 class StubPipeline:
@@ -214,14 +213,13 @@ class StubPipeline:
 
 @pytest.fixture
 def api_env(tmp_path, monkeypatch):
-    """Point every data location at tmp_path and set a known API token."""
+    """Point every data location at tmp_path."""
     from meeting_assistant import config
 
     monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
     monkeypatch.setattr(config, "AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
     monkeypatch.setattr(config, "INDEX_DB_PATH", tmp_path / "index.sqlite")
-    monkeypatch.setattr(config, "API_TOKEN", API_TOKEN)
     (tmp_path / "audio").mkdir()
     return tmp_path
 
@@ -233,7 +231,7 @@ def stub_pipeline():
 
 @pytest.fixture
 def client(api_env, stub_pipeline):
-    """An authenticated TestClient over an app whose jobs run the stub pipeline."""
+    """A TestClient over an app whose jobs run the stub pipeline."""
     from fastapi.testclient import TestClient
 
     from meeting_assistant.api.app import create_app
@@ -243,7 +241,7 @@ def client(api_env, stub_pipeline):
     # An empty UI directory, so tests never depend on whether the real
     # frontend has been built.
     app = create_app(jobs=jobs, preload_models=False, frontend_dist=api_env / "no-ui")
-    with TestClient(app, headers={"Authorization": f"Bearer {API_TOKEN}"}) as test_client:
+    with TestClient(app) as test_client:
         yield test_client
     if stub_pipeline.gate is not None:
         stub_pipeline.gate.set()

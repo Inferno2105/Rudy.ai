@@ -3,13 +3,11 @@
  *
  * `openapi-fetch` over the generated `paths` type: every path, parameter and
  * response body is checked at compile time against the backend's schema.
- * A middleware attaches the token and turns a 401 into a sign-out, so an
- * expired or rotated token always lands the user back on the token screen
- * instead of a page full of failed requests.
+ * The API has no authentication (a single-user tool on a trusted machine or
+ * network), so requests carry no credentials.
  */
-import createClient, { type Middleware } from 'openapi-fetch'
+import createClient from 'openapi-fetch'
 
-import { clearToken, getToken } from '../auth/token'
 import type { paths } from './schema'
 import type { ArtifactName, UploadResult } from './types'
 
@@ -49,34 +47,12 @@ export function errorMessage(body: unknown, status: number): string {
   return status === 0 ? 'The server could not be reached' : `Request failed (HTTP ${status})`
 }
 
-export function authHeaders(): Record<string, string> {
-  const token = getToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
-function handleUnauthorized(status: number): void {
-  if (status === 401 && getToken() !== null) clearToken('rejected')
-}
-
-const auth: Middleware = {
-  onRequest({ request }) {
-    const token = getToken()
-    if (token) request.headers.set('Authorization', `Bearer ${token}`)
-    return request
-  },
-  onResponse({ response }) {
-    handleUnauthorized(response.status)
-    return response
-  },
-}
-
 export const api = createClient<paths>({
   baseUrl: window.location.origin,
   // Resolve fetch per call rather than capturing it at import time, so
   // anything that wraps fetch later (request mocking in tests, devtools) applies.
   fetch: (request) => globalThis.fetch(request),
 })
-api.use(auth)
 
 interface FetchResult<T> {
   data?: T
@@ -99,19 +75,15 @@ export async function unwrap<T>(call: Promise<FetchResult<T>>): Promise<T> {
   return result.data as T
 }
 
-/** Raw fetch with the token, for the few responses that are not JSON models. */
-export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+/** Raw fetch for the few responses that are not JSON models. */
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   let response: Response
   try {
-    response = await fetch(apiUrl(path), {
-      ...init,
-      headers: { ...authHeaders(), ...(init.headers as Record<string, string> | undefined) },
-    })
+    response = await fetch(apiUrl(path), init)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw new ApiError(0, errorMessage(null, 0))
   }
-  handleUnauthorized(response.status)
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
     throw new ApiError(response.status, errorMessage(body, response.status))
@@ -121,21 +93,15 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
 
 /** A raw artifact, exactly as the pipeline wrote it. */
 export async function fetchArtifact(runId: string, name: ArtifactName): Promise<unknown> {
-  const response = await authFetch(
+  const response = await apiFetch(
     `/api/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(name)}`,
   )
   return response.json() as Promise<unknown>
 }
 
-/**
- * A playable URL for a run's recording. `<audio>` cannot send headers, so
- * the server issues a short-lived ticket scoped to this run's audio.
- */
-export async function audioUrl(runId: string): Promise<{ url: string; expiresAt: number }> {
-  const data = await unwrap(
-    api.POST('/api/runs/{run_id}/audio-url', { params: { path: { run_id: runId } } }),
-  )
-  return { url: apiUrl(data.url), expiresAt: data.expires_at }
+/** Where an `<audio>` element plays a run's recording from (supports seeking). */
+export function audioUrl(runId: string): string {
+  return apiUrl(`/api/runs/${encodeURIComponent(runId)}/audio`)
 }
 
 /**
@@ -150,13 +116,11 @@ export function uploadAudio(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', apiUrl('/api/uploads'))
-    for (const [name, value] of Object.entries(authHeaders())) xhr.setRequestHeader(name, value)
     xhr.responseType = 'json'
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total)
     }
     xhr.onload = () => {
-      handleUnauthorized(xhr.status)
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response as UploadResult)
       else reject(new ApiError(xhr.status, errorMessage(xhr.response, xhr.status)))
     }

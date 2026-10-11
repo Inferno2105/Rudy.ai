@@ -2,8 +2,6 @@ import { resolve } from 'node:path'
 
 import { defineConfig, devices } from '@playwright/test'
 
-import { E2E_TOKEN } from './e2e/env.ts'
-
 /**
  * One end-to-end path through the real stack: the built UI served by the real
  * FastAPI app, with the model pipeline replaced by a stub
@@ -39,7 +37,6 @@ export default defineConfig({
   webServer: {
     command: `"${python}" "${server}" --port ${port}`,
     url: `http://127.0.0.1:${port}/api/health`,
-    env: { E2E_API_TOKEN: E2E_TOKEN },
     reuseExistingServer: false,
     timeout: 60_000,
   },

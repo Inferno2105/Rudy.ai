@@ -1,15 +1,15 @@
 /**
  * Server-sent events over `fetch`.
  *
- * The browser's `EventSource` cannot send an Authorization header, and the
- * token must never go in a URL, so the run event stream is read with `fetch`
- * and parsed here. The parser follows the WHATWG event-stream rules that
+ * The run event stream is read with `fetch` rather than `EventSource` for
+ * control: an explicit abort on unmount, a backoff we choose, and a clean stop
+ * on the server's `end` event (which `EventSource` would treat as a dropped
+ * connection and retry forever). The parser follows the WHATWG rules that
  * matter in practice: `\n`, `\r\n` or `\r` line endings (including a `\r\n`
  * split across two network chunks), multi-line `data`, comment lines (the
  * server's keepalives), and dispatch on a blank line.
  */
-import { clearToken } from '../auth/token'
-import { apiUrl, authHeaders } from './client'
+import { apiUrl } from './client'
 import type { EndEvent, Job, ManifestEvent, SegmentsEvent } from './types'
 
 export interface SseMessage {
@@ -120,15 +120,10 @@ export async function followRunEvents(runId: string, options: FollowOptions): Pr
     let ended = false
     try {
       const response = await fetch(url, {
-        headers: { ...authHeaders(), Accept: 'text/event-stream' },
+        headers: { Accept: 'text/event-stream' },
         signal,
         cache: 'no-store',
       })
-      if (response.status === 401) {
-        clearToken('rejected')
-        onStatus('closed')
-        return
-      }
       if (response.status === 404) {
         onStatus('failed', 'This run does not exist')
         return

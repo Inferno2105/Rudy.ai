@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meeting Assistant API",
-    "description": "Local Hindi-English meeting assistant: runs, transcripts, summaries, action items, live recording and evaluation. All routes except /api/health need `Authorization: Bearer <API_TOKEN>`.",
+    "description": "Local Hindi-English meeting assistant: runs, transcripts, summaries, action items, live recording and evaluation. No authentication: run it on a trusted machine or network.",
     "version": "0.1.0"
   },
   "paths": {
@@ -12,7 +12,7 @@
           "system"
         ],
         "summary": "Health",
-        "description": "Unauthenticated, so a client can tell \"server down\" from \"bad token\".\nDeliberately reveals nothing but the version and whether setup is complete.",
+        "description": "The version, and whether setup is complete (with what is missing).",
         "operationId": "health_api_health_get",
         "responses": {
           "200": {
@@ -36,45 +36,17 @@
         "summary": "Devices",
         "description": "Microphone inputs on the server, for choosing a live-recording device.",
         "operationId": "devices_api_devices_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/InputDevice"
                   },
+                  "type": "array",
                   "title": "Response Devices Api Devices Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -89,45 +61,17 @@
         ],
         "summary": "List Audio",
         "operationId": "list_audio_api_audio_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/AudioFile"
                   },
+                  "type": "array",
                   "title": "Response List Audio Api Audio Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -143,33 +87,15 @@
         "summary": "Upload Audio",
         "description": "Store an audio file in the audio directory under a sanitized name.\n\nThe name is reduced to a safe slug (so a client cannot choose where the\nfile lands), and an existing file of the same name is never overwritten\nwith different content: runs record their input's sha256 for provenance,\nand silently replacing the bytes behind a name would break that link for\nevery earlier run of it.",
         "operationId": "upload_audio_api_uploads_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_upload_audio_api_uploads_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -203,24 +129,6 @@
         "summary": "Rebuild Index",
         "description": "Re-ingest every run directory -- the API form of ``meeting-assistant reindex``.",
         "operationId": "rebuild_index_api_index_rebuild_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -228,16 +136,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IndexRebuildResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -253,24 +151,6 @@
         "summary": "Eval Report",
         "description": "The latest ``meeting-assistant eval`` report, as written to disk.",
         "operationId": "eval_report_api_eval_report_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -278,16 +158,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EvalReport"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -358,22 +228,6 @@
               "default": 0,
               "title": "Offset"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -411,33 +265,15 @@
         ],
         "summary": "Start Batch",
         "operationId": "start_batch_api_runs_batch_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BatchRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "202": {
@@ -479,22 +315,6 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -538,22 +358,6 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -608,22 +412,6 @@
               "type": "string",
               "title": "Run Id"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -665,22 +453,6 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -724,22 +496,6 @@
               "type": "string",
               "title": "Run Id"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -782,22 +538,6 @@
               "type": "string",
               "title": "Run Id"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -839,22 +579,6 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -920,22 +644,6 @@
               "type": "string",
               "title": "Run Id"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -962,14 +670,14 @@
         }
       }
     },
-    "/api/runs/{run_id}/audio-url": {
-      "post": {
+    "/api/runs/{run_id}/audio": {
+      "get": {
         "tags": [
           "runs"
         ],
-        "summary": "Get Run Audio Url",
-        "description": "A short-lived URL an ``<audio>`` element can play without the API token.",
-        "operationId": "get_run_audio_url_api_runs__run_id__audio_url_post",
+        "summary": "Get Run Audio",
+        "description": "The run's source recording, for playback alongside its transcript.\n\nSupports HTTP Range requests, so the player can seek.",
+        "operationId": "get_run_audio_api_runs__run_id__audio_get",
         "parameters": [
           {
             "name": "run_id",
@@ -979,34 +687,11 @@
               "type": "string",
               "title": "Run Id"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AudioUrl"
-                }
-              }
-            }
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -1037,22 +722,6 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -1093,79 +762,6 @@
         }
       }
     },
-    "/api/runs/{run_id}/audio": {
-      "get": {
-        "tags": [
-          "runs"
-        ],
-        "summary": "Get Run Audio",
-        "description": "The run's source recording, for playback alongside its transcript.\n\nAccepts the bearer token (scripts) or a media ticket (an ``<audio>``\nelement). Supports HTTP Range requests, so the player can seek.",
-        "operationId": "get_run_audio_api_runs__run_id__audio_get",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          },
-          {
-            "name": "ticket",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "From POST .../audio-url",
-              "title": "Ticket"
-            },
-            "description": "From POST .../audio-url"
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "401": {
-            "description": "Neither a valid token nor a valid ticket"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/jobs": {
       "get": {
         "tags": [
@@ -1174,45 +770,17 @@
         "summary": "List Jobs",
         "description": "Recent jobs, newest first (in memory only; cleared on restart).",
         "operationId": "list_jobs_api_jobs_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/Job"
                   },
+                  "type": "array",
                   "title": "Response List Jobs Api Jobs Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1227,24 +795,6 @@
         ],
         "summary": "Current Job",
         "operationId": "current_job_api_jobs_current_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1263,16 +813,6 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
         }
       }
@@ -1285,33 +825,15 @@
         "summary": "Start Live",
         "description": "Start recording from the server's microphone. 409 if a job is busy.",
         "operationId": "start_live_api_live_start_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LiveStartRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "202": {
@@ -1345,24 +867,6 @@
         "summary": "Stop Live",
         "description": "Stop recording. The job then drains queued chunks and runs the\nsummary stages, so it stays ``stopping`` for a while before finishing.",
         "operationId": "stop_live_api_live_stop_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -1370,16 +874,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Job"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1685,26 +1179,6 @@
           "size_bytes"
         ],
         "title": "AudioFile"
-      },
-      "AudioUrl": {
-        "properties": {
-          "url": {
-            "type": "string",
-            "title": "Url",
-            "description": "Relative URL with a signed, run-scoped ticket"
-          },
-          "expires_at": {
-            "type": "integer",
-            "title": "Expires At",
-            "description": "Unix timestamp after which the URL stops working"
-          }
-        },
-        "type": "object",
-        "required": [
-          "url",
-          "expires_at"
-        ],
-        "title": "AudioUrl"
       },
       "BatchRequest": {
         "properties": {

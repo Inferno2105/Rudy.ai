@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from meeting_assistant.api.auth import require_token
 from meeting_assistant.api.deps import get_jobs
 from meeting_assistant.api.jobs import BusyError, JobManager, NoLiveJobError
 from meeting_assistant.api.schemas.jobs import Job, JobAccepted, LiveStartRequest
 
-router = APIRouter(tags=["jobs"], dependencies=[Depends(require_token)])
+router = APIRouter(tags=["jobs"])
 
 
 @router.get("/jobs", response_model=list[Job])

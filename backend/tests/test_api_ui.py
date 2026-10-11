@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import API_TOKEN
 
 
 @pytest.fixture
@@ -58,7 +57,9 @@ def test_unknown_api_paths_are_json_404s_not_the_ui(ui_client):
 
 def test_api_routes_still_win_over_the_fallback(ui_client):
     assert ui_client.get("/api/health").json()["ok"] in (True, False)
-    assert ui_client.get("/api/runs").status_code == 401
+    response = ui_client.get("/api/runs")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
 
 
 def test_the_ui_page_carries_a_restrictive_csp(ui_client):
@@ -109,6 +110,8 @@ def test_ui_routes_are_not_part_of_the_api_schema(ui_client):
     assert all(path.startswith("/api/") for path in paths)
 
 
-def test_health_stays_public_with_the_ui_mounted(ui_client):
-    assert ui_client.get("/api/health").status_code == 200
-    assert API_TOKEN not in ui_client.get("/").text
+def test_the_api_needs_no_credentials(ui_client):
+    """Authentication was removed by design: a single-user tool on a trusted
+    machine or network. Every route answers without an Authorization header."""
+    for path in ("/api/health", "/api/runs", "/api/audio", "/api/jobs", "/api/jobs/current"):
+        assert ui_client.get(path).status_code == 200, path

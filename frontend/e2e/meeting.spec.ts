@@ -1,7 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { E2E_TOKEN } from './env.ts'
-
 /** A valid 1-second silent 16 kHz mono WAV, built in memory. */
 function silentWav(seconds = 1, sampleRate = 16_000): Buffer {
   const samples = seconds * sampleRate
@@ -22,10 +20,8 @@ function silentWav(seconds = 1, sampleRate = 16_000): Buffer {
   return buffer
 }
 
-async function signIn(page: Page) {
+async function openApp(page: Page) {
   await page.goto('/')
-  await page.getByLabel('API token').fill(E2E_TOKEN)
-  await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByRole('heading', { name: 'Meetings', level: 1 })).toBeVisible()
 }
 
@@ -35,15 +31,13 @@ async function openNav(page: Page, name: string) {
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name }).click()
 }
 
-test('rejects a wrong token', async ({ page }) => {
-  await page.goto('/')
-  await page.getByLabel('API token').fill('not-the-token')
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByText('That token was not accepted by the server.')).toBeVisible()
+test('opens straight to the meetings list, with no login', async ({ page }) => {
+  await openApp(page)
+  await expect(page.getByLabel('API token')).toHaveCount(0)
 })
 
 test('upload a recording, process it, and read the results', async ({ page }) => {
-  await signIn(page)
+  await openApp(page)
   await openNav(page, 'New run')
 
   await page.getByLabel('Recording file').setInputFiles({
@@ -66,10 +60,13 @@ test('upload a recording, process it, and read the results', async ({ page }) =>
   await page.getByText('Original script').click()
   await expect(transcript.getByText('नमस्ते सबको, मीटिंग शुरू करते हैं')).toBeVisible()
 
-  // The recording plays through a signed URL, never the token.
+  // The recording is served directly, with Range support so the player can seek.
   const player = page.getByLabel('Meeting recording')
-  await expect(player).toHaveAttribute('src', /\/audio\?ticket=\d+\./)
-  expect(await player.getAttribute('src')).not.toContain(E2E_TOKEN)
+  await expect(player).toHaveAttribute('src', /\/api\/runs\/[^/]+\/audio$/)
+  const audio = await page.request.get((await player.getAttribute('src'))!, {
+    headers: { Range: 'bytes=0-9' },
+  })
+  expect(audio.status()).toBe(206)
 
   await page.getByRole('tab', { name: /Summary/ }).click()
   await expect(page.getByText('The team agreed to ship the release on Friday')).toBeVisible()
@@ -92,7 +89,7 @@ test('upload a recording, process it, and read the results', async ({ page }) =>
 test('a long transcript renders only the rows near the viewport', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))
-  await signIn(page)
+  await openApp(page)
   await openNav(page, 'New run')
   await page.getByLabel('Recording file').setInputFiles({
     name: 'long-meeting.wav',
@@ -118,7 +115,7 @@ test('a long transcript renders only the rows near the viewport', async ({ page 
 })
 
 test('live session: segments stream in, then stop', async ({ page }) => {
-  await signIn(page)
+  await openApp(page)
   await openNav(page, 'Live')
   // The e2e machine may have no microphone; the stub pipeline does not use one.
   const start = page.getByRole('button', { name: 'Start recording' })

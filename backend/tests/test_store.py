@@ -297,3 +297,27 @@ def test_deleting_a_run_cascades_to_child_tables(tmp_path):
             "SELECT COUNT(*) FROM segments WHERE run_id = ?", (paths.run_id,)
         ).fetchone()[0]
     assert remaining == 0
+
+
+def test_a_cross_thread_connection_can_be_closed_on_another_thread(tmp_path):
+    """The API's per-request connection may be closed on a different pool
+    thread than the one that opened it (see ``api.deps.get_db``)."""
+    import threading
+
+    from meeting_assistant.store.db import open_db
+
+    errors: list[BaseException] = []
+    context = open_db(tmp_path / "index.sqlite", cross_thread=True)
+    conn = context.__enter__()
+    conn.execute("SELECT 1")
+
+    def close_elsewhere():
+        try:
+            context.__exit__(None, None, None)
+        except BaseException as exc:  # noqa: BLE001 -- recorded for the assertion
+            errors.append(exc)
+
+    worker = threading.Thread(target=close_elsewhere)
+    worker.start()
+    worker.join()
+    assert errors == []

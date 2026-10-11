@@ -138,11 +138,6 @@ class SpeakersResponse(BaseModel):
     totals: SpeakerTotals
 
 
-class AudioUrl(BaseModel):
-    url: str = Field(description="Relative URL with a signed, run-scoped ticket")
-    expires_at: int = Field(description="Unix timestamp after which the URL stops working")
-
-
 class MetadataResponse(BaseModel):
     meeting_id: str
     date: str
