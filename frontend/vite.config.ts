@@ -47,6 +47,7 @@ export default defineConfig({
     tailwindcss(),
     preloadCriticalFonts([
       /inter-latin-wght-normal-[\w-]+\.woff2$/,
+      /space-grotesk-latin-wght-normal-[\w-]+\.woff2$/,
       /noto-sans-devanagari-devanagari-wght-normal-[\w-]+\.woff2$/,
     ]),
   ],

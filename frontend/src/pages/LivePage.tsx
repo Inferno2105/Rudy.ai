@@ -23,7 +23,30 @@ import { Callout, EmptyState, LoadingBlock } from '../components/ui/feedback'
 import { Field, Input, Select, Switch } from '../components/ui/field'
 import { formatClock, formatFixed, NBSP, plural } from '../lib/format'
 import { speakerPalette } from '../lib/speakers'
-import { useDocumentTitle } from '../lib/utils'
+import { cn, useDocumentTitle } from '../lib/utils'
+import { Waveform } from '../components/visuals'
+
+/** The record button's visual: a glowing orb with rings that pulse while recording. */
+function RecordOrb({ active }: { active: boolean }) {
+  return (
+    <div aria-hidden className="relative grid size-24 shrink-0 place-items-center">
+      {active ? (
+        <>
+          <span className="bg-danger/40 animate-ring absolute inset-0 rounded-full" />
+          <span className="bg-danger/30 animate-ring absolute inset-0 rounded-full [animation-delay:1.2s]" />
+        </>
+      ) : null}
+      <span
+        className={cn(
+          'relative grid size-20 place-items-center rounded-full text-white transition-colors duration-500',
+          active ? 'bg-danger shadow-[0_0_48px_-6px_var(--color-danger)]' : 'bg-cta glow',
+        )}
+      >
+        <Mic className="size-8" />
+      </span>
+    </div>
+  )
+}
 
 function useElapsed(startedAt: string | null | undefined, running: boolean): number | null {
   const [now, setNow] = useState(() => Date.now())
@@ -66,7 +89,11 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
 
   return (
     <Card className="max-w-xl">
+      <div className="flex justify-center pt-8">
+        <RecordOrb active={false} />
+      </div>
       <CardHeader
+        className="border-0 pb-0 text-center [&>div]:mx-auto"
         title="Start a live session"
         description="Records from the server's microphone and transcribes as you speak."
       />
@@ -181,176 +208,191 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
   const failed = job?.state === 'failed'
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
-      <Card className="flex min-h-[28rem] flex-col">
-        <CardHeader
-          title={
-            <span className="flex items-center gap-2">
-              {running ? (
-                <span className="relative flex size-2.5" aria-hidden>
-                  <span className="bg-danger absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none" />
-                  <span className="bg-danger relative inline-flex size-2.5 rounded-full" />
-                </span>
-              ) : null}
-              {finished ? 'Session finished' : stopping ? 'Finishing…' : 'Recording'}
-            </span>
-          }
-          description={
-            stopping && !finished
-              ? 'Processing audio that was still queued. This can take a moment.'
-              : undefined
-          }
-          actions={
-            finished ? (
-              <>
-                <Button asChild variant="primary" size="sm">
-                  <Link to={`/runs/${encodeURIComponent(runId)}`}>
-                    <ExternalLink aria-hidden /> Open meeting
-                  </Link>
-                </Button>
-                <Button size="sm" onClick={onReset}>
-                  New session
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => stop.mutate()}
-                disabled={!running || stop.isPending}
-              >
-                <CircleStop aria-hidden /> Stop
-              </Button>
-            )
-          }
+    <>
+      <Card className="relative mb-6 overflow-hidden p-6 sm:p-8">
+        <div
+          aria-hidden
+          className="bg-brand pointer-events-none absolute -top-28 left-1/3 size-80 rounded-full opacity-20 blur-3xl"
         />
-        <div className="relative flex-1">
-          {/* Focusable so keyboard users can scroll it; named so the focus stop makes sense. */}
-          <section
-            ref={attachList}
-            aria-label="Live transcript, scrollable"
-            tabIndex={0}
-            onScroll={(event) => {
-              const el = event.currentTarget
-              setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 48)
-            }}
-            className="absolute inset-0 overflow-y-auto overscroll-contain px-5 py-4"
-          >
-            {events.segments.length === 0 ? (
-              <EmptyState
-                icon={<Mic />}
-                title={finished ? 'Nothing was transcribed' : 'Listening…'}
-              >
-                {finished
-                  ? 'No speech was detected during the session.'
-                  : 'Segments appear here a few seconds after each pause in speech.'}
-              </EmptyState>
-            ) : (
-              <Transcript
-                segments={events.segments}
-                palette={palette}
-                label="Live transcript"
-                scrollElement={list}
-              />
-            )}
-          </section>
-          {!pinned ? (
-            <Button
-              size="sm"
-              variant="primary"
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg"
-              onClick={() => setPinned(true)}
+        <div className="relative flex flex-col items-center gap-6 sm:flex-row">
+          <RecordOrb active={running} />
+          <div className="min-w-0 text-center sm:text-left">
+            <p className="text-muted text-xs font-semibold tracking-[0.18em] uppercase">Elapsed</p>
+            <p
+              translate="no"
+              className="text-fg font-mono text-5xl font-semibold tracking-tight tabular-nums"
             >
-              <ArrowDown aria-hidden /> Jump to latest
-            </Button>
-          ) : null}
+              {elapsed != null ? formatClock(elapsed) : '0:00'}
+            </p>
+          </div>
+          <Waveform active={running} className="w-full sm:ml-auto sm:max-w-sm" />
         </div>
-        <p className="sr-only" aria-live="polite">
-          {plural(events.segments.length, 'segment')} transcribed
-        </p>
       </Card>
-
-      <div className="space-y-4">
-        <Card>
-          <CardBody className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-muted text-sm">Status</span>
-              {job ? (
-                <JobStateBadge state={job.state} />
-              ) : (
-                <span className="text-muted text-sm">Connecting…</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted text-sm">Elapsed</span>
-              <span translate="no" className="text-fg font-mono text-sm tabular-nums">
-                {elapsed != null ? formatClock(elapsed) : '—'}
+      <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
+        <Card className="flex min-h-[28rem] flex-col">
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                {running ? (
+                  <span className="relative flex size-2.5" aria-hidden>
+                    <span className="bg-danger absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none" />
+                    <span className="bg-danger relative inline-flex size-2.5 rounded-full" />
+                  </span>
+                ) : null}
+                {finished ? 'Session finished' : stopping ? 'Finishing…' : 'Recording'}
               </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted text-sm">Segments</span>
-              <span className="text-fg text-sm tabular-nums">{events.segments.length}</span>
-            </div>
-            {events.status === 'reconnecting' ? (
-              <Callout tone="warning">Connection lost, reconnecting…</Callout>
-            ) : null}
-          </CardBody>
-        </Card>
-        {stats ? (
-          <Card>
-            <CardHeader title="Session statistics" headingLevel={3} />
-            <CardBody>
-              <dl className="space-y-2 text-sm">
-                {(
-                  [
-                    ['Chunks recorded', stats.chunks_recorded],
-                    ['Chunks processed', stats.chunks_processed],
-                    ['Max backlog', stats.max_backlog],
-                    [
-                      'Mean chunk latency',
-                      stats.mean_chunk_latency_sec != null
-                        ? `${formatFixed(stats.mean_chunk_latency_sec, 2)}${NBSP}s`
-                        : undefined,
-                    ],
-                    [
-                      'Real-time factor',
-                      stats.realtime_factor != null
-                        ? formatFixed(stats.realtime_factor, 3)
-                        : undefined,
-                    ],
-                  ] as const
-                )
-                  .filter(([, value]) => value !== undefined)
-                  .map(([label, value]) => (
-                    <div key={label} className="flex justify-between gap-3">
-                      <dt className="text-muted">{label}</dt>
-                      <dd className="text-fg tabular-nums">{value}</dd>
-                    </div>
-                  ))}
-              </dl>
-              {stats.chunks_recorded != null &&
-              stats.chunks_processed != null &&
-              stats.chunks_recorded !== stats.chunks_processed ? (
-                <Callout tone="warning" className="mt-3">
-                  Not every recorded chunk was processed.
-                </Callout>
-              ) : null}
-            </CardBody>
-          </Card>
-        ) : null}
-        {failed ? (
-          <ErrorState
-            title="The session failed"
-            error={
-              new Error(
-                job?.error ??
-                  `It stopped without reporting why. Check data/runs/${runId}/run.log on the server, then start a new session.`,
+            }
+            description={
+              stopping && !finished
+                ? 'Processing audio that was still queued. This can take a moment.'
+                : undefined
+            }
+            actions={
+              finished ? (
+                <>
+                  <Button asChild variant="primary" size="sm">
+                    <Link to={`/runs/${encodeURIComponent(runId)}`}>
+                      <ExternalLink aria-hidden /> Open meeting
+                    </Link>
+                  </Button>
+                  <Button size="sm" onClick={onReset}>
+                    New session
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => stop.mutate()}
+                  disabled={!running || stop.isPending}
+                >
+                  <CircleStop aria-hidden /> Stop
+                </Button>
               )
             }
           />
-        ) : null}
+          <div className="relative flex-1">
+            {/* Focusable so keyboard users can scroll it; named so the focus stop makes sense. */}
+            <section
+              ref={attachList}
+              aria-label="Live transcript, scrollable"
+              tabIndex={0}
+              onScroll={(event) => {
+                const el = event.currentTarget
+                setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 48)
+              }}
+              className="absolute inset-0 overflow-y-auto overscroll-contain px-5 py-4"
+            >
+              {events.segments.length === 0 ? (
+                <EmptyState
+                  icon={<Mic />}
+                  title={finished ? 'Nothing was transcribed' : 'Listening…'}
+                >
+                  {finished
+                    ? 'No speech was detected during the session.'
+                    : 'Segments appear here a few seconds after each pause in speech.'}
+                </EmptyState>
+              ) : (
+                <Transcript
+                  segments={events.segments}
+                  palette={palette}
+                  label="Live transcript"
+                  scrollElement={list}
+                />
+              )}
+            </section>
+            {!pinned ? (
+              <Button
+                size="sm"
+                variant="primary"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg"
+                onClick={() => setPinned(true)}
+              >
+                <ArrowDown aria-hidden /> Jump to latest
+              </Button>
+            ) : null}
+          </div>
+          <p className="sr-only" aria-live="polite">
+            {plural(events.segments.length, 'segment')} transcribed
+          </p>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardBody className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-muted text-sm">Status</span>
+                {job ? (
+                  <JobStateBadge state={job.state} />
+                ) : (
+                  <span className="text-muted text-sm">Connecting…</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted text-sm">Segments</span>
+                <span className="text-fg text-sm tabular-nums">{events.segments.length}</span>
+              </div>
+              {events.status === 'reconnecting' ? (
+                <Callout tone="warning">Connection lost, reconnecting…</Callout>
+              ) : null}
+            </CardBody>
+          </Card>
+          {stats ? (
+            <Card>
+              <CardHeader title="Session statistics" headingLevel={3} />
+              <CardBody>
+                <dl className="space-y-2 text-sm">
+                  {(
+                    [
+                      ['Chunks recorded', stats.chunks_recorded],
+                      ['Chunks processed', stats.chunks_processed],
+                      ['Max backlog', stats.max_backlog],
+                      [
+                        'Mean chunk latency',
+                        stats.mean_chunk_latency_sec != null
+                          ? `${formatFixed(stats.mean_chunk_latency_sec, 2)}${NBSP}s`
+                          : undefined,
+                      ],
+                      [
+                        'Real-time factor',
+                        stats.realtime_factor != null
+                          ? formatFixed(stats.realtime_factor, 3)
+                          : undefined,
+                      ],
+                    ] as const
+                  )
+                    .filter(([, value]) => value !== undefined)
+                    .map(([label, value]) => (
+                      <div key={label} className="flex justify-between gap-3">
+                        <dt className="text-muted">{label}</dt>
+                        <dd className="text-fg tabular-nums">{value}</dd>
+                      </div>
+                    ))}
+                </dl>
+                {stats.chunks_recorded != null &&
+                stats.chunks_processed != null &&
+                stats.chunks_recorded !== stats.chunks_processed ? (
+                  <Callout tone="warning" className="mt-3">
+                    Not every recorded chunk was processed.
+                  </Callout>
+                ) : null}
+              </CardBody>
+            </Card>
+          ) : null}
+          {failed ? (
+            <ErrorState
+              title="The session failed"
+              error={
+                new Error(
+                  job?.error ??
+                    `It stopped without reporting why. Check data/runs/${runId}/run.log on the server, then start a new session.`,
+                )
+              }
+            />
+          ) : null}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -374,6 +416,7 @@ export function LivePage() {
   return (
     <>
       <PageHeader
+        eyebrow="Record"
         title="Live"
         description="Transcribe a meeting as it happens, from the microphone attached to the server."
       />

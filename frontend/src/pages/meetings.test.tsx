@@ -8,8 +8,8 @@ import { API, server } from '../test/server'
 describe('meetings list', () => {
   it('lists runs by recording name with status and origin', async () => {
     renderApp('/')
-    const table = await screen.findByRole('table')
-    const rows = within(table).getAllByRole('row').slice(1)
+    const list = await screen.findByRole('list', { name: '3 meetings' })
+    const rows = within(list).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
     expect(within(rows[0]!).getByRole('link', { name: 'test_hindi.wav' })).toHaveAttribute(
       'href',
@@ -21,9 +21,9 @@ describe('meetings list', () => {
 
   it('filters by search text without a server round trip', async () => {
     const { user } = renderApp('/')
-    await screen.findByRole('table')
+    await screen.findByRole('list', { name: '3 meetings' })
     await user.type(screen.getByLabelText('Search meetings'), 'standup')
-    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
+    const rows = within(screen.getByRole('list', { name: '1 meeting' })).getAllByRole('listitem')
     expect(rows).toHaveLength(1)
     expect(within(rows[0]!).getByText('standup.wav')).toBeInTheDocument()
   })
@@ -74,8 +74,19 @@ describe('meetings list', () => {
       http.post(API('/api/index/rebuild'), () => HttpResponse.json({ indexed: 3, total: 3 })),
     )
     const { user } = renderApp('/')
-    await screen.findByRole('table')
+    await screen.findByRole('list', { name: '3 meetings' })
     await user.click(screen.getByRole('button', { name: /Rebuild index/ }))
     expect(await screen.findByText('Indexed 3 of 3 runs from disk.')).toBeInTheDocument()
+  })
+})
+
+describe('meetings overview', () => {
+  it('shows speakers, language mix and summary stats from the run list', async () => {
+    renderApp('/')
+    const list = await screen.findByRole('list', { name: '3 meetings' })
+    const first = within(list).getAllByRole('listitem')[0]!
+    expect(within(first).getByText('2 speakers')).toBeInTheDocument()
+    expect(within(first).getByText(/Language mix: Hindi 60%, English 40%/)).toBeInTheDocument()
+    expect(screen.getByText('Minutes of speech')).toBeInTheDocument()
   })
 })

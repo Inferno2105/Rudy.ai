@@ -56,7 +56,10 @@ export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>
   return (
     <div
       aria-hidden
-      className={cn('bg-subtle animate-pulse rounded-md motion-reduce:animate-none', className)}
+      className={cn(
+        'animate-shimmer rounded-md bg-[linear-gradient(90deg,var(--color-subtle),color-mix(in_oklch,var(--color-accent)_14%,var(--color-subtle)),var(--color-subtle))] bg-[length:200%_100%]',
+        className,
+      )}
       {...props}
     />
   )
@@ -92,11 +95,14 @@ export function EmptyState({
       className={cn('flex flex-col items-center justify-center px-6 py-12 text-center', className)}
     >
       {icon ? (
-        <div className="bg-subtle text-muted mb-4 rounded-full p-3 [&_svg]:size-6" aria-hidden>
-          {icon}
+        <div className="animate-float relative mb-5" aria-hidden>
+          <div className="bg-brand absolute inset-0 rounded-2xl opacity-40 blur-xl" />
+          <div className="glass text-accent relative grid size-14 place-items-center rounded-2xl [&_svg]:size-6">
+            {icon}
+          </div>
         </div>
       ) : null}
-      <p className="text-fg font-medium">{title}</p>
+      <p className="font-display text-fg text-lg font-semibold">{title}</p>
       {children ? <div className="text-muted mt-1 max-w-md text-sm">{children}</div> : null}
       {action ? <div className="mt-5">{action}</div> : null}
     </div>

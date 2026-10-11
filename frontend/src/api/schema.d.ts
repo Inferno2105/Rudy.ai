@@ -864,6 +864,23 @@ export interface components {
             config_hash?: string | null;
             /** Audio Path */
             audio_path?: string | null;
+            /**
+             * Speakers
+             * @description Speaker labels, most speaking time first
+             */
+            speakers?: string[];
+            /**
+             * Duration Sec
+             * @description End of the last segment
+             */
+            duration_sec?: number | null;
+            /**
+             * Language Mix
+             * @description Share of speech time per language tag (sums to 1)
+             */
+            language_mix?: {
+                [key: string]: number;
+            };
         };
         /**
          * Segment

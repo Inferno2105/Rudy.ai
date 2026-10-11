@@ -32,6 +32,9 @@ export const runSummaries: RunSummary[] = [
     git_commit: '5bc97c7aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     config_hash: '108acd72e0ed',
     audio_path: 'C:\\data\\audio\\test_hindi.wav',
+    speakers: ['SPEAKER_00', 'SPEAKER_01'],
+    duration_sec: 12,
+    language_mix: { Hindi: 0.6, English: 0.4 },
   },
   {
     run_id: '20260925-181403_batch_standup',

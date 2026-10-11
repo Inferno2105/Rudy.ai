@@ -7,15 +7,18 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md'
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-accent-fg hover:bg-accent-hover shadow-sm',
-  secondary: 'bg-surface text-fg ring-1 ring-inset ring-strong-border hover:bg-subtle shadow-sm',
+  // Brand gradient with a soft glow; brightens on hover, presses in on click.
+  primary:
+    'bg-cta text-white glow shadow-[inset_0_1px_0_0_rgb(255_255_255/0.25)] hover:brightness-110',
+  secondary: 'glass text-fg hover:bg-subtle hover:border-strong-border',
   ghost: 'text-muted hover:bg-subtle hover:text-fg',
-  danger: 'bg-danger text-white hover:opacity-90 shadow-sm dark:text-canvas',
+  danger:
+    'bg-danger text-white shadow-[0_10px_30px_-12px_var(--color-danger)] hover:brightness-110 dark:text-canvas',
 }
 
 const SIZES: Record<Size, string> = {
-  sm: 'h-8 gap-1.5 px-2.5 text-sm',
-  md: 'h-9 gap-2 px-3.5 text-sm',
+  sm: 'h-8 gap-1.5 rounded-lg px-2.5 text-sm',
+  md: 'h-10 gap-2 rounded-xl px-4 text-sm',
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -35,7 +38,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={asChild ? undefined : (type ?? 'button')}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-md font-medium whitespace-nowrap transition-colors select-none',
+        'inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap select-none',
+        'transition-[transform,filter,background-color,border-color,color,box-shadow] duration-200 active:scale-[0.97]',
         'disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
         VARIANTS[variant],
         SIZES[size],

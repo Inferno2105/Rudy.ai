@@ -1,5 +1,7 @@
 import '@fontsource-variable/inter'
 import '@fontsource-variable/noto-sans-devanagari'
+import '@fontsource-variable/space-grotesk'
+import '@fontsource-variable/jetbrains-mono'
 import './index.css'
 
 import { StrictMode } from 'react'

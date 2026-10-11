@@ -1,4 +1,4 @@
-import { CheckSquare, Lightbulb, ListChecks } from 'lucide-react'
+import { CalendarClock, CheckSquare, Lightbulb, ListChecks, Quote, UserRound } from 'lucide-react'
 
 import { isNotFound } from '../../api/client'
 import { useActionItems, useSummary } from '../../api/queries'
@@ -27,7 +27,7 @@ function SummaryCard({ run, stages }: { run: RunDetail; stages: StageInfo[] }) {
   const summary = useSummary(run.run_id)
   return (
     <Card>
-      <CardHeader title="Summary" />
+      <CardHeader title="Summary" icon={<Quote />} />
       <CardBody>
         {summary.isPending ? (
           <LoadingBlock label="Loading summary" />
@@ -40,20 +40,22 @@ function SummaryCard({ run, stages }: { run: RunDetail; stages: StageInfo[] }) {
         ) : (
           <div className="space-y-6">
             {summary.data.summary ? (
-              <p className="text-fg leading-relaxed">{summary.data.summary}</p>
+              <blockquote className="font-display text-fg border-accent relative border-l-2 pl-5 text-xl leading-relaxed text-balance">
+                {summary.data.summary}
+              </blockquote>
             ) : (
               <p className="text-muted text-sm">The model returned an empty summary.</p>
             )}
             <div className="grid gap-6 md:grid-cols-2">
-              <section>
+              <section className="bg-subtle rounded-xl p-4">
                 <h3 className="text-fg mb-2 flex items-center gap-2 text-sm font-semibold">
-                  <Lightbulb className="text-muted size-4" aria-hidden /> Highlights
+                  <Lightbulb className="text-warning size-4" aria-hidden /> Highlights
                 </h3>
                 <BulletList items={summary.data.highlights ?? []} empty="No highlights." />
               </section>
-              <section>
+              <section className="bg-subtle rounded-xl p-4">
                 <h3 className="text-fg mb-2 flex items-center gap-2 text-sm font-semibold">
-                  <CheckSquare className="text-muted size-4" aria-hidden /> Decisions
+                  <CheckSquare className="text-success size-4" aria-hidden /> Decisions
                 </h3>
                 <BulletList
                   items={summary.data.key_decisions ?? []}
@@ -72,7 +74,7 @@ function ActionItemsCard({ run, stages }: { run: RunDetail; stages: StageInfo[] 
   const items = useActionItems(run.run_id)
   return (
     <Card>
-      <CardHeader title="Action items" />
+      <CardHeader title="Action items" icon={<ListChecks />} />
       {items.isPending ? (
         <CardBody>
           <LoadingBlock label="Loading action items" lines={3} />
@@ -108,10 +110,20 @@ function ActionItemsCard({ run, stages }: { run: RunDetail; stages: StageInfo[] 
             </thead>
             <tbody className="divide-border divide-y">
               {items.data.action_items.map((item, index) => (
-                <tr key={index}>
-                  <td className="text-fg px-5 py-3">{item.task || '—'}</td>
-                  <td className="text-muted px-3 py-3">{item.person || 'Unassigned'}</td>
-                  <td className="text-muted px-5 py-3">{item.deadline || 'None given'}</td>
+                <tr key={index} className="hover:bg-subtle transition-colors">
+                  <td className="text-fg px-5 py-3 font-medium">{item.task || '—'}</td>
+                  <td className="px-3 py-3">
+                    <span className="bg-subtle text-fg inline-flex items-center gap-1.5 rounded-full py-0.5 pr-2.5 pl-1 text-xs">
+                      <UserRound className="text-accent size-4" aria-hidden />
+                      {item.person || 'Unassigned'}
+                    </span>
+                  </td>
+                  <td className="text-muted px-5 py-3">
+                    <span className="inline-flex items-center gap-1.5 text-xs">
+                      <CalendarClock className="size-4" aria-hidden />
+                      {item.deadline || 'None given'}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

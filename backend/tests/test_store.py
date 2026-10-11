@@ -321,3 +321,19 @@ def test_a_cross_thread_connection_can_be_closed_on_another_thread(tmp_path):
     worker.start()
     worker.join()
     assert errors == []
+
+
+def test_list_runs_includes_an_overview_of_each_meeting(tmp_path):
+    runs_dir = tmp_path / "runs"
+    with open_db(tmp_path / "index.sqlite") as conn:
+        ingest_run(conn, _completed_run(runs_dir, "a.wav"))
+        ingest_run(conn, _completed_run(runs_dir, "b.wav", with_extras=False))
+        rows = {row["run_id"].split("_")[-1]: row for row in list_runs(conn)}
+
+    full, bare = rows["a"], rows["b"]
+    assert full["speakers"] == ["SPEAKER_00", "SPEAKER_01"]
+    assert full["duration_sec"] == 4.0
+    assert full["language_mix"] == {"Hindi": 0.5, "English": 0.5}
+    # No artifacts: absent, not zero.
+    assert bare["speakers"] == [] and bare["duration_sec"] is None
+    assert bare["language_mix"] == {}

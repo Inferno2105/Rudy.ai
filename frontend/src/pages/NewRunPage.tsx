@@ -109,6 +109,7 @@ export function NewRunPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Process"
         title="New run"
         description="Process a recording end to end: transcription, speakers, language tagging, summary and action items."
       />
@@ -129,11 +130,18 @@ export function NewRunPage() {
                 onDragLeave={() => setDragging(false)}
                 onDrop={onDrop}
                 className={cn(
-                  'flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors',
-                  dragging ? 'border-accent bg-accent-soft' : 'border-strong-border',
+                  'flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-[border-color,background-color,box-shadow,transform] duration-300',
+                  dragging
+                    ? 'border-accent bg-accent-soft scale-[1.01] shadow-[0_0_40px_-10px_var(--color-glow)]'
+                    : 'border-strong-border hover:border-accent/50',
                 )}
               >
-                <UploadCloud className="text-muted mb-3 size-8" aria-hidden />
+                <div className="animate-float relative mb-4" aria-hidden>
+                  <div className="bg-brand absolute inset-0 rounded-2xl opacity-40 blur-xl" />
+                  <div className="bg-cta relative grid size-14 place-items-center rounded-2xl text-white">
+                    <UploadCloud className="size-7" />
+                  </div>
+                </div>
                 <p className="text-fg text-sm font-medium">Drop a recording here</p>
                 <p className="text-muted mt-1 text-sm">or</p>
                 <Button

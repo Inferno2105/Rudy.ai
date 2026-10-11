@@ -1,13 +1,16 @@
 import { BarChart3, ListMusic, Menu, Mic, Monitor, Moon, Sun, Upload, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router'
+import { Link, NavLink, useLocation, useOutlet } from 'react-router'
 
 import { useCurrentJob, useHealth } from '../api/queries'
 import { isJobActive } from '../api/types'
 import { useTheme, type ThemePreference } from '../lib/theme'
+import { EASE_OUT } from '../lib/easing'
 import { cn } from '../lib/utils'
 import { JobStateBadge } from './status'
 import { Button } from './ui/button'
+import { BrandMark, Equalizer } from './visuals'
 
 const NAV = [
   { to: '/', label: 'Meetings', icon: ListMusic, end: true },
@@ -16,10 +19,10 @@ const NAV = [
   { to: '/evaluation', label: 'Evaluation', icon: BarChart3, end: false },
 ]
 
-function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+function Navigation({ id, onNavigate }: { id: string; onNavigate?: () => void }) {
   return (
     <nav aria-label="Main">
-      <ul className="space-y-0.5">
+      <ul className="space-y-1">
         {NAV.map(({ to, label, icon: Icon, end }) => (
           <li key={to}>
             <NavLink
@@ -28,15 +31,26 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
               onClick={onNavigate}
               className={({ isActive }) =>
                 cn(
-                  'flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-accent-soft text-accent'
-                    : 'text-muted hover:bg-subtle hover:text-fg',
+                  'relative flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors',
+                  isActive ? 'text-fg' : 'text-muted hover:text-fg hover:bg-subtle',
                 )
               }
             >
-              <Icon className="size-4" aria-hidden />
-              {label}
+              {({ isActive }) => (
+                <>
+                  {isActive ? (
+                    // Slides between items as the page changes.
+                    <motion.span
+                      layoutId={id}
+                      aria-hidden
+                      className="bg-accent-soft ring-accent/25 absolute inset-0 rounded-xl ring-1 ring-inset"
+                      transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+                    />
+                  ) : null}
+                  <Icon className={cn('relative size-4', isActive && 'text-accent')} aria-hidden />
+                  <span className="relative">{label}</span>
+                </>
+              )}
             </NavLink>
           </li>
         ))}
@@ -57,7 +71,12 @@ function HealthIndicator() {
   const problems = health.data?.problems ?? []
   const indicator = (
     <>
-      <span className={cn('size-2 shrink-0 rounded-full', state.dot)} aria-hidden />
+      <span className="relative flex size-2 shrink-0" aria-hidden>
+        {health.isSuccess && health.data.ok ? (
+          <span className="bg-success animate-ring absolute inset-0 rounded-full" />
+        ) : null}
+        <span className={cn('relative size-2 rounded-full', state.dot)} />
+      </span>
       <span>{state.text}</span>
     </>
   )
@@ -65,7 +84,7 @@ function HealthIndicator() {
     return <output className="text-muted flex items-center gap-2 text-xs">{indicator}</output>
   }
   // Setup problems are listed in full, not hidden in a hover tooltip: they
-  // say exactly what to fix (e.g. a missing token), on any device.
+  // say exactly what to fix (e.g. a missing model token), on any device.
   return (
     <details className="text-muted text-xs">
       <summary className="hover:text-fg flex cursor-pointer items-center gap-2">
@@ -83,25 +102,41 @@ function HealthIndicator() {
 
 function CurrentJob() {
   const { data: job } = useCurrentJob()
-  if (!job || !isJobActive(job)) return null
-  const target = job.kind === 'live' ? '/live' : `/runs/${encodeURIComponent(job.run_id)}`
+  const active = job && isJobActive(job) ? job : null
   return (
-    <Link
-      to={target}
-      className="ring-border hover:bg-subtle flex min-w-0 items-center gap-2 rounded-full py-1 pr-3 pl-1.5 text-xs ring-1"
-    >
-      <JobStateBadge state={job.state} />
-      <span className="text-fg truncate">
-        {job.kind === 'live' ? 'Live recording' : job.kind === 'resume' ? 'Resuming' : 'Processing'}
-      </span>
-    </Link>
+    <AnimatePresence>
+      {active ? (
+        <motion.div
+          key={active.job_id}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.25, ease: EASE_OUT }}
+        >
+          <Link
+            to={active.kind === 'live' ? '/live' : `/runs/${encodeURIComponent(active.run_id)}`}
+            className="glass hover:border-strong-border flex min-w-0 items-center gap-2 rounded-full py-1 pr-3 pl-1.5 text-xs transition-colors"
+          >
+            <JobStateBadge state={active.state} />
+            <Equalizer className="text-accent h-3" />
+            <span className="text-fg truncate">
+              {active.kind === 'live'
+                ? 'Live recording'
+                : active.kind === 'resume'
+                  ? 'Resuming'
+                  : 'Processing'}
+            </span>
+          </Link>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }
 
 const THEME_CYCLE: Record<ThemePreference, ThemePreference> = {
-  system: 'light',
-  light: 'dark',
-  dark: 'system',
+  dark: 'light',
+  light: 'system',
+  system: 'dark',
 }
 
 function ThemeToggle() {
@@ -113,9 +148,17 @@ function ThemeToggle() {
       size="sm"
       onClick={() => setTheme(THEME_CYCLE[theme])}
       aria-label={`Theme: ${theme}. Switch to ${THEME_CYCLE[theme]}`}
-      title={`Theme: ${theme}`}
     >
-      <Icon aria-hidden />
+      <motion.span
+        key={theme}
+        initial={{ rotate: -90, opacity: 0 }}
+        animate={{ rotate: 0, opacity: 1 }}
+        transition={{ duration: 0.3, ease: EASE_OUT }}
+        className="inline-flex"
+      >
+        <Icon aria-hidden />
+      </motion.span>
+      <span className="capitalize">{theme}</span>
     </Button>
   )
 }
@@ -131,12 +174,33 @@ function SidebarFooter() {
 
 function Brand() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 rounded-md">
-      <img src="/favicon.svg" alt="" width={28} height={28} className="size-7" />
-      <span className="text-fg font-semibold" translate="no">
-        Meeting Assistant
+    <Link to="/" className="flex items-center gap-2.5 rounded-lg">
+      <BrandMark />
+      <span className="font-display text-fg leading-tight font-semibold" translate="no">
+        Meeting
+        <br />
+        <span className="text-muted text-sm font-medium">Assistant</span>
       </span>
     </Link>
+  )
+}
+
+/** The routed page, faded and lifted in when the route changes. */
+function AnimatedOutlet() {
+  const location = useLocation()
+  const outlet = useOutlet()
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }}
+        transition={{ duration: 0.35, ease: EASE_OUT }}
+      >
+        {outlet}
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
@@ -149,7 +213,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const setMenuOpen = (open: boolean) => setMenuOpenOn(open ? location.pathname : null)
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_1fr]">
       <a
         href="#main"
         className="bg-accent text-accent-fg sr-only z-50 rounded-md px-3 py-2 focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2"
@@ -158,16 +222,18 @@ export function AppShell({ children }: { children?: ReactNode }) {
       </a>
 
       {/* Desktop sidebar */}
-      <aside className="border-border bg-surface sticky top-0 hidden h-dvh flex-col justify-between border-r p-4 lg:flex">
-        <div className="space-y-6">
-          <Brand />
-          <Navigation />
+      <aside className="sticky top-0 hidden h-dvh p-3 lg:block">
+        <div className="glass flex h-full flex-col justify-between rounded-2xl p-4">
+          <div className="space-y-8">
+            <Brand />
+            <Navigation id="nav-desktop" />
+          </div>
+          <SidebarFooter />
         </div>
-        <SidebarFooter />
       </aside>
 
       <div className="min-w-0">
-        <header className="border-border bg-surface/90 sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 px-4 backdrop-blur-xl sm:px-6 lg:bg-transparent">
           <div className="flex items-center gap-2 lg:hidden">
             <Button
               variant="ghost"
@@ -185,24 +251,32 @@ export function AppShell({ children }: { children?: ReactNode }) {
           <CurrentJob />
         </header>
 
-        {menuOpen ? (
-          <div
-            id="mobile-nav"
-            className="border-border bg-surface space-y-6 border-b p-4 lg:hidden"
-          >
-            <Navigation onNavigate={() => setMenuOpen(false)} />
-            <SidebarFooter />
-          </div>
-        ) : null}
+        <AnimatePresence>
+          {menuOpen ? (
+            <motion.div
+              id="mobile-nav"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: EASE_OUT }}
+              className="overflow-hidden lg:hidden"
+            >
+              <div className="glass mx-3 mb-3 space-y-6 rounded-2xl p-4">
+                <Navigation id="nav-mobile" onNavigate={() => setMenuOpen(false)} />
+                <SidebarFooter />
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <main
           id="main"
           // Focus target for the skip link only (never reached by Tab), so no
           // focus ring is needed here.
           tabIndex={-1}
-          className="mx-auto max-w-6xl px-4 py-6 outline-none sm:px-6 lg:py-8"
+          className="mx-auto max-w-6xl px-4 pt-2 pb-12 outline-none sm:px-6 lg:pt-4"
         >
-          {children ?? <Outlet />}
+          {children ?? <AnimatedOutlet />}
         </main>
       </div>
     </div>
@@ -211,22 +285,29 @@ export function AppShell({ children }: { children?: ReactNode }) {
 
 export function PageHeader({
   title,
+  eyebrow,
   description,
   actions,
   children,
 }: {
   title: ReactNode
+  eyebrow?: ReactNode
   description?: ReactNode
   actions?: ReactNode
   children?: ReactNode
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-fg text-2xl font-semibold tracking-tight text-balance break-words">
+        {eyebrow ? (
+          <p className="text-accent mb-2 text-xs font-semibold tracking-[0.18em] uppercase">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h1 className="text-brand text-3xl font-semibold tracking-tight text-balance break-words sm:text-4xl">
           {title}
         </h1>
-        {description ? <div className="text-muted mt-1 text-sm">{description}</div> : null}
+        {description ? <div className="text-muted mt-2 text-sm">{description}</div> : null}
         {children}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}

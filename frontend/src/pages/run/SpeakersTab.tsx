@@ -2,9 +2,10 @@ import { useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 
 import { isNotFound } from '../../api/client'
-import { useSpeakers } from '../../api/queries'
+import { useSpeakers, useTranscript } from '../../api/queries'
 import type { RunDetail, StageInfo } from '../../api/types'
 import { ErrorState, NotProduced } from '../../components/states'
+import { SpeakerTimeline } from '../../components/SpeakerTimeline'
 import { SpeakerChip } from '../../components/status'
 import { Card, CardBody, CardHeader } from '../../components/ui/card'
 import { LoadingBlock } from '../../components/ui/feedback'
@@ -13,6 +14,7 @@ import { speakerName, speakerPalette } from '../../lib/speakers'
 
 export function SpeakersTab({ run, stages }: { run: RunDetail; stages: StageInfo[] }) {
   const speakers = useSpeakers(run.run_id)
+  const transcript = useTranscript(run.run_id)
 
   const rows = useMemo(
     () =>
@@ -41,6 +43,17 @@ export function SpeakersTab({ run, stages }: { run: RunDetail; stages: StageInfo
 
   return (
     <div className="space-y-6">
+      {transcript.data && transcript.data.segments.length > 0 ? (
+        <Card>
+          <CardHeader
+            title="Who spoke when"
+            description="Each speaker's turns across the meeting."
+          />
+          <CardBody>
+            <SpeakerTimeline segments={transcript.data.segments} palette={palette} />
+          </CardBody>
+        </Card>
+      ) : null}
       <Card>
         <CardHeader
           title="Share of speaking time"

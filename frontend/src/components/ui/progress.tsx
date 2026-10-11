@@ -21,11 +21,16 @@ export function Progress({
   return (
     <div className={cn('relative', className)}>
       <progress value={value} max={max} aria-label={label} className="sr-only" />
-      <div aria-hidden className="bg-subtle h-1.5 w-full overflow-hidden rounded-full">
+      <div aria-hidden className="bg-subtle h-2 w-full overflow-hidden rounded-full">
         <div
-          className="bg-accent h-full w-full origin-left rounded-full transition-transform duration-300"
+          className="bg-brand relative h-full w-full origin-left rounded-full shadow-[0_0_12px_var(--color-glow)] transition-transform duration-500 ease-out"
           style={{ transform: `scaleX(${fraction})` }}
-        />
+        >
+          {/* A light sweep while incomplete, so a slow stage still looks alive. */}
+          {fraction < 1 ? (
+            <span className="animate-shimmer absolute inset-0 rounded-full bg-[linear-gradient(90deg,transparent,rgb(255_255_255/0.45),transparent)] bg-[length:200%_100%]" />
+          ) : null}
+        </div>
       </div>
     </div>
   )

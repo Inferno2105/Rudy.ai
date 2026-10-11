@@ -21,10 +21,12 @@ export function DialogContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]" />
+      <DialogPrimitive.Overlay className="data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
       <DialogPrimitive.Content
         className={cn(
-          'bg-surface ring-border fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-xl p-6 shadow-xl ring-1',
+          'bg-surface border-border fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-2xl border p-6 shadow-2xl',
+          // The open/close motion runs on an inner wrapper-free element: scale and fade only.
+          'data-[state=open]:animate-enter data-[state=closed]:animate-leave',
           className,
         )}
       >

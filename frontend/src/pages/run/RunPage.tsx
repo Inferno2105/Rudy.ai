@@ -1,4 +1,16 @@
-import { ArrowLeft, FileJson, FileText, Fingerprint, Mic, Sparkles, Users } from 'lucide-react'
+import {
+  ArrowLeft,
+  Clock,
+  FileJson,
+  FileText,
+  Fingerprint,
+  Languages,
+  Mic,
+  Sparkles,
+  Type,
+  Users,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
 import { lazy, Suspense } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
@@ -30,30 +42,36 @@ const SpeakersTab = lazy(async () => ({ default: (await import('./SpeakersTab'))
 const TABS = ['transcript', 'summary', 'speakers', 'provenance', 'artifacts'] as const
 type Tab = (typeof TABS)[number]
 
+function Fact({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="glass flex items-center gap-2 rounded-full py-1.5 pr-3.5 pl-2 text-sm">
+      <span className="text-accent [&_svg]:size-4" aria-hidden>
+        {icon}
+      </span>
+      <dt className="sr-only">{label}</dt>
+      <dd className="text-fg tabular-nums">{children}</dd>
+    </div>
+  )
+}
+
 function MeetingFacts({ runId }: { runId: string }) {
   const metadata = useMetadata(runId)
   if (!metadata.data) return null
   const m = metadata.data
   return (
-    <dl className="text-muted mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-      <div className="flex gap-1.5">
-        <dt className="sr-only">Duration</dt>
-        <dd className="tabular-nums">{m.duration_readable}</dd>
-      </div>
-      <div className="flex gap-1.5">
-        <dt className="sr-only">Speakers</dt>
-        <dd>
-          {m.num_speakers} speaker{m.num_speakers === 1 ? '' : 's'}
-        </dd>
-      </div>
-      <div className="flex gap-1.5">
-        <dt className="sr-only">Languages</dt>
-        <dd>{m.languages_used.join(', ') || 'No language tags'}</dd>
-      </div>
-      <div className="flex gap-1.5">
-        <dt className="sr-only">Words</dt>
-        <dd className="tabular-nums">{formatCount(m.total_word_count)} words</dd>
-      </div>
+    <dl className="mt-5 flex flex-wrap gap-2">
+      <Fact icon={<Clock />} label="Duration">
+        {m.duration_readable}
+      </Fact>
+      <Fact icon={<Users />} label="Speakers">
+        {m.num_speakers} speaker{m.num_speakers === 1 ? '' : 's'}
+      </Fact>
+      <Fact icon={<Languages />} label="Languages">
+        {m.languages_used.join(', ') || 'No language tags'}
+      </Fact>
+      <Fact icon={<Type />} label="Words">
+        {formatCount(m.total_word_count)} words
+      </Fact>
     </dl>
   )
 }
@@ -104,10 +122,18 @@ export function RunPage() {
 
   return (
     <>
-      <Link to="/" className="text-muted hover:text-fg mb-3 inline-flex items-center gap-1 text-sm">
-        <ArrowLeft className="size-4" aria-hidden /> Meetings
+      <Link
+        to="/"
+        className="text-muted hover:text-fg group mb-4 inline-flex items-center gap-1 text-sm"
+      >
+        <ArrowLeft
+          className="size-4 transition-transform group-hover:-translate-x-0.5"
+          aria-hidden
+        />{' '}
+        Meetings
       </Link>
       <PageHeader
+        eyebrow={detail.mode === 'live' ? 'Live session' : 'Meeting'}
         title={runSourceName(detail)}
         description={
           <span className="flex flex-wrap items-center gap-2">
@@ -134,8 +160,9 @@ export function RunPage() {
       </PageHeader>
 
       {active ? (
-        <Card className="mb-6">
+        <Card className="mb-8">
           <CardHeader
+            icon={<Sparkles />}
             title={detail.mode === 'live' ? 'Recording in progress' : 'Processing'}
             description={
               events.status === 'reconnecting'

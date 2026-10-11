@@ -5,6 +5,7 @@ import { isNotFound } from '../api/client'
 import { useEvalReport } from '../api/queries'
 import type { AggregateReport, ClipReport, EvalReport } from '../api/types'
 import { PageHeader } from '../components/AppShell'
+import { CountUp } from '../components/motion'
 import { ErrorState } from '../components/states'
 import { Card, CardBody, CardHeader } from '../components/ui/card'
 import { Callout, EmptyState, LoadingBlock } from '../components/ui/feedback'
@@ -106,8 +107,8 @@ function MetricCards({ aggregate }: { aggregate: AggregateReport }) {
         <Card key={metric.key} className="px-5 py-4">
           <p className="text-muted text-xs font-medium tracking-wide uppercase">{metric.family}</p>
           <p className="text-fg mt-1 text-sm">{metric.label}</p>
-          <p className="text-fg mt-2 font-mono text-2xl font-semibold tabular-nums">
-            {formatMetric(metric.read(aggregate))}
+          <p className="text-brand font-display mt-2 text-3xl font-semibold tabular-nums">
+            <CountUp value={metric.read(aggregate) ?? 0} digits={3} />
           </p>
           <p className="text-faint mt-1 text-xs">{metric.better} is better</p>
         </Card>
@@ -248,6 +249,7 @@ export function EvaluationPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Research"
         title="Evaluation"
         description="Results of the latest evaluation pass over the labelled dataset."
       />

@@ -35,7 +35,56 @@ def list_runs(
     if limit is not None:
         sql += " LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-    return [dict(row) for row in conn.execute(sql, params).fetchall()]
+    rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    _add_overview(conn, rows)
+    return rows
+
+
+def _add_overview(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Attach what a meeting list shows at a glance, from the indexed artifacts.
+
+    ``speakers`` (ordered by speaking time), ``duration_sec`` (end of the last
+    segment) and ``language_mix`` (share of segment time per language tag) are
+    read with one grouped query each for the whole page, never one per run.
+    A run whose artifacts were not produced gets an empty list, ``None`` and an
+    empty mapping -- absent, not zero.
+    """
+    for row in rows:
+        row["speakers"] = []
+        row["duration_sec"] = None
+        row["language_mix"] = {}
+    if not rows:
+        return
+    by_id = {row["run_id"]: row for row in rows}
+    marks = ",".join("?" * len(by_id))
+    ids = list(by_id)
+
+    for run_id, speaker in conn.execute(
+        f"SELECT run_id, speaker FROM speakers WHERE run_id IN ({marks}) "
+        "ORDER BY run_id, speaking_time_sec DESC, speaker",
+        ids,
+    ):
+        by_id[run_id]["speakers"].append(speaker)
+
+    for run_id, end in conn.execute(
+        f"SELECT run_id, MAX(end) FROM segments WHERE run_id IN ({marks}) GROUP BY run_id",
+        ids,
+    ):
+        by_id[run_id]["duration_sec"] = end
+
+    totals: dict[str, dict[str, float]] = {}
+    for run_id, language, seconds in conn.execute(
+        f"SELECT run_id, language, SUM(MAX(end - start, 0)) FROM segments "
+        f"WHERE run_id IN ({marks}) AND language IS NOT NULL GROUP BY run_id, language",
+        ids,
+    ):
+        totals.setdefault(run_id, {})[language] = seconds or 0.0
+    for run_id, per_language in totals.items():
+        whole = sum(per_language.values())
+        if whole > 0:
+            by_id[run_id]["language_mix"] = {
+                language: round(seconds / whole, 4) for language, seconds in per_language.items()
+            }
 
 
 def get_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any] | None:

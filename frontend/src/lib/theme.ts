@@ -11,7 +11,8 @@ function readPreference(): ThemePreference {
   } catch {
     // Storage blocked: follow the system.
   }
-  return 'system'
+  // Dark is the primary "studio" theme; the toggle offers light and system.
+  return 'dark'
 }
 
 function systemPrefersDark(): boolean {
@@ -23,7 +24,7 @@ export function applyTheme(preference: ThemePreference): void {
   document.documentElement.classList.toggle('dark', dark)
   // Browser chrome follows the chosen theme, not only the system one.
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
-    meta.content = dark ? '#0b1120' : '#f8fafc'
+    meta.content = dark ? '#0c0e1b' : '#f6f5fb'
   }
 }
 

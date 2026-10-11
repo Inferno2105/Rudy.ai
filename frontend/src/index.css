@@ -3,57 +3,197 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Design tokens. Colours are semantic (surface, muted, accent...) rather than
- * literal, so light and dark themes are one set of overrides and components
- * never branch on the theme themselves.
+ * "Studio" design tokens. Colours are semantic (surface, muted, accent...) so
+ * light and dark are one set of overrides and components never branch on the
+ * theme. Dark is the primary theme; light keeps the same character.
  */
 @theme {
   --font-sans:
     'Inter Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  --font-display:
+    'Space Grotesk Variable', 'Inter Variable', 'Noto Sans Devanagari Variable', ui-sans-serif,
+    system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
-  --color-canvas: oklch(98.4% 0.003 247.858);
+  /* Light */
+  --color-canvas: oklch(97.6% 0.012 285);
   --color-surface: oklch(100% 0 0);
-  --color-subtle: oklch(96.8% 0.007 247.896);
-  --color-border: oklch(92.9% 0.013 255.508);
-  --color-strong-border: oklch(86.9% 0.022 252.894);
-  --color-fg: oklch(20.8% 0.042 265.755);
-  --color-muted: oklch(44.6% 0.043 257.281);
-  --color-faint: oklch(55.4% 0.046 257.417);
-  --color-accent: oklch(51.1% 0.262 276.966);
-  --color-accent-hover: oklch(45.7% 0.24 277.023);
+  --color-subtle: oklch(95% 0.016 285);
+  --color-border: oklch(22% 0.05 280 / 0.09);
+  --color-strong-border: oklch(22% 0.05 280 / 0.18);
+  --color-fg: oklch(21% 0.04 280);
+  --color-muted: oklch(45% 0.04 280);
+  --color-faint: oklch(56% 0.035 280);
+  --color-accent: oklch(55% 0.24 288);
+  --color-accent-2: oklch(64% 0.15 218);
+  --color-accent-hover: oklch(50% 0.24 288);
   --color-accent-fg: oklch(100% 0 0);
-  --color-accent-soft: oklch(96.2% 0.018 272.314);
-  --color-danger: oklch(50.5% 0.213 27.518);
-  --color-danger-soft: oklch(97.1% 0.013 17.38);
-  --color-warning: oklch(55.5% 0.163 48.998);
-  --color-warning-soft: oklch(98.7% 0.022 95.277);
-  --color-success: oklch(52.7% 0.154 150.069);
-  --color-success-soft: oklch(98.2% 0.018 155.826);
-  --color-ring: oklch(58.5% 0.233 277.117);
+  --color-accent-soft: oklch(55% 0.24 288 / 0.1);
+  --color-danger: oklch(55% 0.21 25);
+  --color-danger-soft: oklch(55% 0.21 25 / 0.1);
+  --color-warning: oklch(58% 0.15 60);
+  --color-warning-soft: oklch(70% 0.15 75 / 0.14);
+  --color-success: oklch(55% 0.15 155);
+  --color-success-soft: oklch(60% 0.15 155 / 0.12);
+  --color-ring: oklch(60% 0.22 288);
+  --color-glow: oklch(55% 0.24 288 / 0.28);
+  /* Filled call-to-action gradient: dark enough for white text (WCAG AA) in both themes. */
+  --color-cta-1: oklch(52% 0.24 288);
+  --color-cta-2: oklch(54% 0.16 240);
+
+  --animate-shimmer: shimmer 1.8s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-wave: wave 1.1s ease-in-out infinite;
+  --animate-ring: ring 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+  --animate-eq: eq 1.2s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+  @keyframes wave {
+    0%,
+    100% {
+      transform: scaleY(0.25);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes ring {
+    from {
+      transform: scale(0.85);
+      opacity: 0.55;
+    }
+    to {
+      transform: scale(1.6);
+      opacity: 0;
+    }
+  }
+  @keyframes eq {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    40% {
+      transform: scaleY(1);
+    }
+    70% {
+      transform: scaleY(0.6);
+    }
+  }
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
+  }
+  @keyframes leave {
+    to {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
 }
 
 .dark {
-  --color-canvas: oklch(15.5% 0.03 265);
-  --color-surface: oklch(20.8% 0.042 265.755);
-  --color-subtle: oklch(25.5% 0.04 264);
-  --color-border: oklch(30% 0.036 262);
-  --color-strong-border: oklch(37.2% 0.044 257.287);
-  --color-fg: oklch(96.8% 0.007 247.896);
-  --color-muted: oklch(76% 0.03 256);
-  --color-faint: oklch(68% 0.035 257);
-  --color-accent: oklch(67.3% 0.182 276.935);
-  --color-accent-hover: oklch(74% 0.15 277);
-  --color-accent-fg: oklch(15.5% 0.03 265);
-  --color-accent-soft: oklch(28% 0.08 277);
-  --color-danger: oklch(70.4% 0.191 22.216);
-  --color-danger-soft: oklch(26% 0.07 22);
-  --color-warning: oklch(82.8% 0.189 84.429);
-  --color-warning-soft: oklch(27% 0.06 70);
-  --color-success: oklch(79.2% 0.209 151.711);
-  --color-success-soft: oklch(26% 0.06 155);
-  --color-ring: oklch(67.3% 0.182 276.935);
+  --color-canvas: oklch(13.5% 0.028 278);
+  --color-surface: oklch(19% 0.035 280);
+  --color-subtle: oklch(100% 0 0 / 0.05);
+  --color-border: oklch(100% 0 0 / 0.08);
+  --color-strong-border: oklch(100% 0 0 / 0.16);
+  --color-fg: oklch(96.5% 0.01 280);
+  --color-muted: oklch(76% 0.025 280);
+  --color-faint: oklch(64% 0.03 280);
+  --color-accent: oklch(72% 0.18 290);
+  --color-accent-2: oklch(82% 0.13 210);
+  --color-accent-hover: oklch(78% 0.16 290);
+  --color-accent-fg: oklch(100% 0 0);
+  --color-accent-soft: oklch(72% 0.18 290 / 0.16);
+  --color-danger: oklch(72% 0.18 22);
+  --color-danger-soft: oklch(72% 0.18 22 / 0.14);
+  --color-warning: oklch(84% 0.16 82);
+  --color-warning-soft: oklch(84% 0.16 82 / 0.13);
+  --color-success: oklch(80% 0.17 155);
+  --color-success-soft: oklch(80% 0.17 155 / 0.13);
+  --color-ring: oklch(76% 0.16 290);
+  --color-glow: oklch(72% 0.18 290 / 0.35);
+  --color-cta-1: oklch(54% 0.22 290);
+  --color-cta-2: oklch(55% 0.15 245);
   color-scheme: dark;
+}
+
+/* Glass panel: translucent surface, blurred backdrop, hairline border. */
+@utility glass {
+  background-color: color-mix(in oklch, var(--color-surface) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    inset 0 1px 0 0 oklch(100% 0 0 / 0.05),
+    0 24px 48px -28px oklch(0% 0 0 / 0.55);
+}
+
+/* Solid gradient for filled controls that carry white text. */
+@utility bg-cta {
+  background-image: linear-gradient(135deg, var(--color-cta-1), var(--color-cta-2));
+}
+
+/* Accent gradient as a fill and as text. */
+@utility bg-brand {
+  background-image: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
+}
+@utility text-brand {
+  background-image: linear-gradient(
+    120deg,
+    var(--color-fg) 20%,
+    var(--color-accent) 60%,
+    var(--color-accent-2)
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+/* Soft accent glow for primary actions and focused cards. */
+@utility glow {
+  box-shadow: 0 10px 30px -10px var(--color-glow);
+}
+
+/* Radix open/close transitions (dialogs, toasts). */
+@utility animate-enter {
+  animation: enter 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@utility animate-leave {
+  animation: leave 0.16s ease-in forwards;
+}
+@utility animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+@utility animate-fade-out {
+  animation: fade-out 0.15s ease-in forwards;
 }
 
 @layer base {
@@ -76,8 +216,42 @@
   }
 
   body {
-    @apply bg-canvas text-fg font-sans antialiased;
+    @apply text-fg font-sans antialiased;
     text-rendering: optimizeLegibility;
+    background-color: var(--color-canvas);
+    /* Two soft light sources: the "studio" atmosphere. */
+    background-image:
+      radial-gradient(
+        60rem 38rem at 0% -10%,
+        color-mix(in oklch, var(--color-accent) 20%, transparent),
+        transparent 65%
+      ),
+      radial-gradient(
+        48rem 32rem at 100% 0%,
+        color-mix(in oklch, var(--color-accent-2) 13%, transparent),
+        transparent 65%
+      );
+    background-attachment: fixed;
+    min-height: 100dvh;
+    isolation: isolate;
+  }
+
+  /* Film grain over the glow, so large gradients never band. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
   }
 
   /* Devanagari needs more line height than Latin to keep matras clear. */

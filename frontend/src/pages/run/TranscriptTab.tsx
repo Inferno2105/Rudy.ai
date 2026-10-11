@@ -5,6 +5,7 @@ import { isNotFound } from '../../api/client'
 import { useArtifact, useTranscript } from '../../api/queries'
 import type { RunDetail, Segment, StageInfo } from '../../api/types'
 import { AudioPlayer, type AudioPlayerHandle } from '../../components/AudioPlayer'
+import { SpeakerTimeline } from '../../components/SpeakerTimeline'
 import { ErrorState, NotProduced } from '../../components/states'
 import { LanguageLegend } from '../../components/status'
 import { Transcript } from '../../components/Transcript'
@@ -97,7 +98,7 @@ export function TranscriptTab({
     if (!hasRecording) return
     const root = document.documentElement
     const previous = root.style.scrollPaddingTop
-    root.style.scrollPaddingTop = '9rem'
+    root.style.scrollPaddingTop = '15rem'
     return () => {
       root.style.scrollPaddingTop = previous
     }
@@ -126,10 +127,21 @@ export function TranscriptTab({
   return (
     <div className="space-y-4">
       {hasRecording ? (
-        <div className="bg-canvas/95 sticky top-14 z-20 -mx-1 px-1 py-2 backdrop-blur">
+        // Player and timeline stay in view while the transcript scrolls.
+        <div className="glass sticky top-16 z-20 space-y-3 rounded-2xl p-3">
           <AudioPlayer ref={player} runId={run.run_id} onTimeUpdate={setCurrentTime} />
+          <SpeakerTimeline
+            segments={segments}
+            palette={palette}
+            currentTime={currentTime}
+            onSeek={(seconds) => player.current?.seek(seconds)}
+          />
         </div>
-      ) : null}
+      ) : (
+        <Card className="p-4">
+          <SpeakerTimeline segments={segments} palette={palette} />
+        </Card>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative max-w-sm min-w-56 flex-1">

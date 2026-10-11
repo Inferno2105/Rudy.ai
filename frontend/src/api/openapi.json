@@ -2202,6 +2202,34 @@
               }
             ],
             "title": "Audio Path"
+          },
+          "speakers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Speakers",
+            "description": "Speaker labels, most speaking time first"
+          },
+          "duration_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Sec",
+            "description": "End of the last segment"
+          },
+          "language_mix": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Language Mix",
+            "description": "Share of speech time per language tag (sums to 1)"
           }
         },
         "type": "object",

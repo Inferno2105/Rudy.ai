@@ -33,7 +33,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               if (!open) remove(toast.id)
             }}
             className={cn(
-              'bg-surface ring-border relative flex items-start gap-3 rounded-lg p-4 pr-10 shadow-lg ring-1',
+              'glass relative flex items-start gap-3 rounded-xl p-4 pr-10',
+              'data-[state=open]:animate-enter data-[state=closed]:animate-leave',
               'data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)]',
             )}
           >

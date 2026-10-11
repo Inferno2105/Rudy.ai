@@ -57,7 +57,7 @@ const SegmentBody = memo(function SegmentBody({
       className={cn(
         'rounded-r-lg border-l-2 py-2 pr-3 pl-3 transition-colors',
         style.rule,
-        active ? 'bg-accent-soft' : 'hover:bg-subtle/60',
+        active ? 'bg-accent-soft shadow-[0_0_28px_-10px_var(--color-glow)]' : 'hover:bg-subtle',
       )}
     >
       <div className="mb-1 flex flex-wrap items-center gap-2">

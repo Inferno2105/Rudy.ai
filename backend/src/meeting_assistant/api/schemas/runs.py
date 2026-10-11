@@ -28,6 +28,13 @@ class RunSummary(BaseModel):
     git_commit: str | None = None
     config_hash: str | None = None
     audio_path: str | None = None
+    speakers: list[str] = Field(
+        default_factory=list, description="Speaker labels, most speaking time first"
+    )
+    duration_sec: float | None = Field(default=None, description="End of the last segment")
+    language_mix: dict[str, float] = Field(
+        default_factory=dict, description="Share of speech time per language tag (sums to 1)"
+    )
 
 
 class StageInfo(BaseModel):
