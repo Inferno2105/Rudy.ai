@@ -95,6 +95,15 @@ function ScrollProgress() {
   )
 }
 
+/**
+ * Holds a SunsetScene below its section's text, never behind it, so headlines
+ * and copy always sit on the plain background. The height follows the width
+ * (the scene is drawn 1200x640 and cropped from the top), so wide windows do not
+ * cut into the sun; the top edge fades out instead of ending in a hard line.
+ */
+const SCENE_BOX =
+  'pointer-events-none relative h-[clamp(300px,34vw,720px)] [mask-image:linear-gradient(to_bottom,transparent,black_28%)]'
+
 function Hero() {
   const ref = useRef<HTMLElement>(null)
   const reduce = useReducedMotion()
@@ -106,13 +115,7 @@ function Hero() {
   return (
     <section ref={ref} className="relative -mt-16 overflow-hidden pt-16">
       <motion.div
-        className="absolute inset-x-0 bottom-0 h-[300px] sm:h-[78%]"
-        style={{ y: sceneY }}
-      >
-        <SunsetScene />
-      </motion.div>
-      <motion.div
-        className="relative mx-auto flex min-h-[92dvh] max-w-4xl flex-col items-center px-5 pt-20 pb-[300px] text-center sm:pt-28 sm:pb-[42vh]"
+        className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-5 pt-20 text-center sm:pt-28"
         style={{ y: textY, opacity: fade }}
       >
         <motion.p
@@ -152,6 +155,9 @@ function Hero() {
             <a href="#how">See how it works</a>
           </Button>
         </motion.div>
+      </motion.div>
+      <motion.div className={`${SCENE_BOX} -mt-4`} style={{ y: sceneY }}>
+        <SunsetScene />
       </motion.div>
     </section>
   )
@@ -402,11 +408,7 @@ function Privacy() {
 function FinalCta() {
   return (
     <section className="relative overflow-hidden">
-      {/* The scene sits below the text, so the copy never lies on the bright sun. */}
-      <div className="absolute inset-x-0 bottom-0 h-[58%] opacity-90">
-        <SunsetScene bubbles={false} />
-      </div>
-      <Reveal className="relative mx-auto max-w-3xl px-5 pt-24 pb-[30rem] text-center">
+      <Reveal className="relative mx-auto max-w-3xl px-5 pt-24 text-center">
         <h2 className="text-brand text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
           Ready for your next meeting?
         </h2>
@@ -417,6 +419,9 @@ function FinalCta() {
           <PrimaryCta className="h-12 px-7 text-base" />
         </div>
       </Reveal>
+      <div className={`${SCENE_BOX} opacity-90`}>
+        <SunsetScene bubbles={false} />
+      </div>
     </section>
   )
 }
