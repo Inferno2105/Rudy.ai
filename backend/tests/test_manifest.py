@@ -153,6 +153,7 @@ def test_as_dict_matches_the_documented_shape(runs_dir):
     assert set(data.keys()) == {
         "run_id",
         "mode",
+        "owner",
         "status",
         "data_origin",
         "provenance",

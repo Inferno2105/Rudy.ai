@@ -6,9 +6,9 @@ import * as f from '../test/fixtures'
 import { renderApp } from '../test/render'
 import { API, server } from '../test/server'
 
-const signedOut = (setupRequired = false) =>
+const signedOut = (setupRequired = false, signupAllowed = true) =>
   http.get(API('/api/auth/status'), () =>
-    HttpResponse.json({ setup_required: setupRequired, user: null }),
+    HttpResponse.json({ setup_required: setupRequired, user: null, signup_allowed: signupAllowed }),
   )
 
 describe('landing page', () => {
@@ -133,5 +133,95 @@ describe('signing in', () => {
     await user.click(screen.getAllByRole('button', { name: 'Sign out' })[0]!)
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
+  })
+})
+
+describe('creating another account', () => {
+  it('links from sign-in to sign-up and signs the new account in', async () => {
+    let created: unknown = null
+    const newcomer = { username: 'priya', created_at: '2026-10-11T12:00:00+00:00' }
+    server.use(
+      http.get(API('/api/auth/status'), () =>
+        HttpResponse.json({
+          setup_required: false,
+          user: created ? newcomer : null,
+          signup_allowed: true,
+        }),
+      ),
+      http.post(API('/api/auth/register'), async ({ request }) => {
+        created = await request.json()
+        return HttpResponse.json(newcomer, { status: 201 })
+      }),
+      http.get(API('/api/runs'), () => HttpResponse.json([])),
+    )
+    const { user, router } = renderApp('/login')
+    await user.click(await screen.findByRole('link', { name: 'Create an account' }))
+    expect(await screen.findByRole('heading', { name: 'Create an account' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/signup')
+    expect(screen.getByText(/no other account can see yours/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Username'), 'priya')
+    await user.type(screen.getByLabelText('Password'), 'a-good-password')
+    await user.type(screen.getByLabelText('Confirm password'), 'a-good-password')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(await screen.findByRole('heading', { name: 'Meetings' })).toBeInTheDocument()
+    expect(created).toEqual({ username: 'priya', password: 'a-good-password' })
+  })
+
+  it('shows the server refusing a taken username', async () => {
+    server.use(
+      signedOut(),
+      http.post(API('/api/auth/register'), () =>
+        HttpResponse.json({ detail: "A user named 'rushi' already exists." }, { status: 422 }),
+      ),
+    )
+    const { user } = renderApp('/signup')
+    await user.type(await screen.findByLabelText('Username'), 'rushi')
+    await user.type(screen.getByLabelText('Password'), 'a-good-password')
+    await user.type(screen.getByLabelText('Confirm password'), 'a-good-password')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+    expect(await screen.findByText("A user named 'rushi' already exists.")).toBeInTheDocument()
+  })
+
+  it('explains when sign-up is turned off, and offers no form', async () => {
+    server.use(signedOut(false, false))
+    renderApp('/signup')
+    expect(await screen.findByText('Sign-up is turned off on this server')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
+  })
+
+  it('does not link to sign-up when it is turned off', async () => {
+    server.use(signedOut(false, false))
+    renderApp('/login')
+    await screen.findByRole('heading', { name: 'Welcome back' })
+    expect(screen.queryByRole('link', { name: 'Create an account' })).not.toBeInTheDocument()
+  })
+})
+
+describe('switching accounts', () => {
+  it("never shows the previous account's meetings to the next one", async () => {
+    let who = f.signedInUser
+    const other = { username: 'priya', created_at: '2026-10-11T12:00:00+00:00' }
+    server.use(
+      http.get(API('/api/auth/status'), () =>
+        HttpResponse.json({ setup_required: false, user: who, signup_allowed: true }),
+      ),
+      http.get(API('/api/runs'), () =>
+        HttpResponse.json(who === f.signedInUser ? f.runSummaries : []),
+      ),
+    )
+    const { queryClient } = renderApp('/meetings')
+    await screen.findByRole('list', { name: '3 meetings' })
+
+    // Another tab signs this browser in as someone else.
+    who = other
+    await queryClient.invalidateQueries({ queryKey: ['auth'] })
+
+    expect(await screen.findByText('priya')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '3 meetings' })).not.toBeInTheDocument()
+    expect(
+      queryClient.getQueriesData({ queryKey: ['runs'] }).map(([, data]) => data),
+    ).not.toContain(f.runSummaries)
   })
 })

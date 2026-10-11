@@ -135,6 +135,15 @@ USERS_DB_PATH: Path = DATA_DIR / "users.sqlite"
 # meeting_assistant.accounts). 127.0.0.1 keeps the server on this machine.
 SESSION_COOKIE = "ma_session"
 SESSION_TTL_DAYS: int = int(os.environ.get("SESSION_TTL_DAYS", "14"))
+# Whether anyone who can reach the server may create an account from the
+# sign-in page. Each account sees only its own meetings. Set to false to add
+# accounts only with `meeting-assistant users add`.
+ALLOW_SIGNUP: bool = os.environ.get("ALLOW_SIGNUP", "true").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 API_HOST: str = os.environ.get("API_HOST", "127.0.0.1")
 API_PORT: int = int(os.environ.get("API_PORT", "8000"))
 API_CORS_ORIGINS: list[str] = [

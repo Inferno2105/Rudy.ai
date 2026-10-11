@@ -153,3 +153,41 @@ test('live session: segments stream in, then stop', async ({ page }) => {
     page.getByRole('list', { name: 'Transcript' }).getByText('live chunk 0'),
   ).toBeVisible()
 })
+
+test('a second account signs up and sees none of the first account’s data', async ({
+  page,
+  browser,
+}, testInfo) => {
+  // The first account processes a recording.
+  await openApp(page)
+  await openNav(page, 'New run')
+  await page.getByLabel('Recording file').setInputFiles({
+    name: 'Private Notes.wav',
+    mimeType: 'audio/wav',
+    buffer: silentWav(),
+  })
+  await expect(page.getByText(/private-notes.wav .*selected it./)).toBeVisible()
+  await page.getByRole('button', { name: 'Start processing' }).click()
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 30_000 })
+  const firstRunUrl = page.url()
+
+  // Someone else, in their own browser, creates an account.
+  const context = await browser.newContext()
+  const other = await context.newPage()
+  await other.goto('/login')
+  await other.getByRole('link', { name: 'Create an account' }).click()
+  await expect(other.getByRole('heading', { name: 'Create an account' })).toBeVisible()
+  const name = `guest-${testInfo.project.name}-${Date.now() % 100000}`
+  await other.getByLabel('Username').fill(name)
+  await other.getByLabel('Password', { exact: true }).fill('guest-password-123')
+  await other.getByLabel('Confirm password').fill('guest-password-123')
+  await other.getByRole('button', { name: 'Create account' }).click()
+
+  await expect(other.getByRole('heading', { name: 'Meetings', level: 1 })).toBeVisible()
+  await expect(other.getByText('No meetings yet')).toBeVisible()
+  await other.goto('/new')
+  await expect(other.getByText('No recordings yet. Upload one above.')).toBeVisible()
+  await other.goto(new URL(firstRunUrl).pathname)
+  await expect(other.getByText('Meeting not found')).toBeVisible()
+  await context.close()
+})

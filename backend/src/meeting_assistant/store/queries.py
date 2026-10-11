@@ -17,10 +17,18 @@ def list_runs(
     offset: int = 0,
     status: str | None = None,
     mode: str | None = None,
+    owner: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Indexed runs, newest first, optionally filtered by status and mode."""
+    """Indexed runs, newest first, optionally filtered by status, mode and owner.
+
+    ``owner`` is an ``accounts.User.uid``; ``None`` means every run (the CLI's
+    view). The web API always passes the signed-in user's uid.
+    """
     clauses: list[str] = []
     params: list[Any] = []
+    if owner is not None:
+        clauses.append("owner = ?")
+        params.append(owner)
     if status is not None:
         clauses.append("status = ?")
         params.append(status)

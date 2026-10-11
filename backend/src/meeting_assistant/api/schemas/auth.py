@@ -11,6 +11,9 @@ class UserOut(BaseModel):
 class AuthStatus(BaseModel):
     setup_required: bool = Field(description="No account exists yet: the UI shows account creation")
     user: UserOut | None = Field(default=None, description="The signed-in user, if any")
+    signup_allowed: bool = Field(
+        default=False, description="New accounts can be created from the sign-in page"
+    )
 
 
 class Credentials(BaseModel):

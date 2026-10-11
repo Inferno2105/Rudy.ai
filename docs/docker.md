@@ -33,7 +33,9 @@ powershell -File docker/up.ps1 -Rebuild   # after pulling new code
 ```
 
 Then open **http://127.0.0.1:8000/**. The first visit to the sign-in page
-creates the first account. Accounts can also be managed inside the container:
+creates the first account; after that, **Create an account** on the sign-in
+page adds more, and each account sees only its own meetings and recordings.
+Accounts can also be managed inside the container:
 
 ```powershell
 docker compose exec app meeting-assistant users add <name>

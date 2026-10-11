@@ -119,7 +119,7 @@ export function NewRunPage() {
           <Card>
             <CardHeader
               title="Upload a recording"
-              description={`${ACCEPTED.join(', ')} · stored in the server's audio folder`}
+              description={`${ACCEPTED.join(', ')} · kept private to your account`}
             />
             <CardBody>
               <div
@@ -202,8 +202,8 @@ export function NewRunPage() {
 
           <Card>
             <CardHeader
-              title="Or choose a recording on the server"
-              description="Files in the data/audio folder."
+              title="Or choose one of your recordings"
+              description="Recordings you have uploaded. Other accounts cannot see them."
             />
             <CardBody>
               {files.isPending ? (

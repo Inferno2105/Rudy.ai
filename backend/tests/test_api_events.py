@@ -35,8 +35,8 @@ def _collect(client, run_id, *, on_open=None, timeout=10.0):
     return collected
 
 
-def test_a_finished_run_streams_its_state_once_and_ends(client, audio_file, wait_for_job):
-    run_id = client.post("/api/runs/batch", json={"audio": audio_file.name}).json()["run_id"]
+def test_a_finished_run_streams_its_state_once_and_ends(client, uploaded_audio, wait_for_job):
+    run_id = client.post("/api/runs/batch", json={"audio": uploaded_audio.name}).json()["run_id"]
     wait_for_job(run_id)
 
     events_seen = _collect(client, run_id)
@@ -48,13 +48,13 @@ def test_a_finished_run_streams_its_state_once_and_ends(client, audio_file, wait
     assert "segments" in names
 
 
-def test_a_run_with_no_job_ends_immediately(client, api_env):
+def test_a_run_with_no_job_ends_immediately(client, api_env, test_user):
     """A run made by the CLI: nothing is running for it, so state then end."""
     from meeting_assistant.paths import new_run
     from meeting_assistant.pipeline.manifest import RunManifest
 
     paths = new_run("batch", "cli.wav", runs_dir=api_env / "runs")
-    RunManifest.start(paths, mode="batch").set_status("partial")
+    RunManifest.start(paths, mode="batch", owner=test_user.uid).set_status("partial")
 
     names = [name for name, _ in _collect(client, paths.run_id)]
     assert names == ["manifest", "end"]
@@ -85,9 +85,9 @@ def test_a_live_run_streams_segments_as_they_are_recorded(client):
     assert events_seen[-1][0] == "end"
 
 
-def test_the_final_manifest_is_never_missed(client, audio_file):
+def test_the_final_manifest_is_never_missed(client, uploaded_audio):
     """The stream must not end before reporting the run's terminal status."""
-    run_id = client.post("/api/runs/batch", json={"audio": audio_file.name}).json()["run_id"]
+    run_id = client.post("/api/runs/batch", json={"audio": uploaded_audio.name}).json()["run_id"]
     events_seen = _collect(client, run_id)
     statuses = [data["status"] for name, data in events_seen if name == "manifest"]
     assert statuses[-1] == "completed"

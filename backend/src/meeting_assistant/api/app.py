@@ -145,6 +145,13 @@ def create_app(
         if preload_models:
             _preload_models()
         app.state.jobs.start()
+        # With one account, runs made by the CLI since the last start are its.
+        from meeting_assistant.ownership import claim_if_single_user
+
+        try:
+            claim_if_single_user()
+        except Exception:  # noqa: BLE001 -- unclaimed runs stay hidden; never block start-up
+            log.exception("Could not assign unclaimed runs")
         log.info("API ready (version %s)", __version__)
         try:
             yield
@@ -155,8 +162,8 @@ def create_app(
         title="Meeting Assistant API",
         version=__version__,
         description="Local Hindi-English meeting assistant: runs, transcripts, summaries, "
-        "action items, live recording and evaluation. No authentication: run it on a "
-        "trusted machine or network.",
+        "action items, live recording and evaluation. Sign in with a session cookie "
+        "(`/api/auth/login`); each account sees only its own runs and recordings.",
         lifespan=lifespan,
     )
     app.state.jobs = jobs or JobManager()

@@ -227,6 +227,7 @@ def api_env(tmp_path, monkeypatch):
     from meeting_assistant.api.routers import auth as auth_router
 
     monkeypatch.setattr(auth_router, "throttle", LoginThrottle())
+    monkeypatch.setattr(auth_router, "signup_throttle", LoginThrottle(window_sec=3600))
     (tmp_path / "audio").mkdir()
     return tmp_path
 
@@ -282,3 +283,31 @@ def wait_for_job(client):
         raise AssertionError(f"job for {run_id} never reached {states}")
 
     return wait
+
+
+@pytest.fixture
+def test_user(client):
+    """The account ``client`` is signed in as."""
+    from meeting_assistant import accounts
+
+    with accounts.open_accounts() as conn:
+        return accounts.get_user(conn, TEST_USER["username"])
+
+
+@pytest.fixture
+def my_audio_dir(test_user):
+    """The signed-in account's own upload folder."""
+    from meeting_assistant.ownership import user_audio_dir
+
+    return user_audio_dir(test_user.uid)
+
+
+@pytest.fixture
+def uploaded_audio(my_audio_dir):
+    """A short real WAV among the signed-in account's uploads."""
+    import numpy as np
+
+    from meeting_assistant.audio.wav_io import save_wav
+
+    my_audio_dir.mkdir(parents=True, exist_ok=True)
+    return save_wav(my_audio_dir / "meeting.wav", np.zeros(16000, dtype=np.int16), 16000)

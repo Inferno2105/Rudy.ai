@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 
-from meeting_assistant import config
+from meeting_assistant import accounts, config
 from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs, get_run_paths
 from meeting_assistant.api.events import run_events
@@ -55,17 +55,25 @@ def list_runs(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     conn: sqlite3.Connection = Depends(get_db),
+    user: accounts.User = Depends(require_user),
 ) -> list[dict[str, Any]]:
-    """Runs from the SQLite index, newest first. Re-indexed automatically when
-    a job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI."""
-    return queries.list_runs(conn, limit=limit, offset=offset, status=status_filter, mode=mode)
+    """Your runs from the SQLite index, newest first. Re-indexed automatically
+    when a job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI."""
+    return queries.list_runs(
+        conn, limit=limit, offset=offset, status=status_filter, mode=mode, owner=user.uid
+    )
 
 
 @router.post("/batch", response_model=JobAccepted, status_code=status.HTTP_202_ACCEPTED)
-def start_batch(body: BatchRequest, jobs: JobManager = Depends(get_jobs)) -> JobAccepted:
-    audio_path = get_audio_file(body.audio)
+def start_batch(
+    body: BatchRequest,
+    jobs: JobManager = Depends(get_jobs),
+    user: accounts.User = Depends(require_user),
+) -> JobAccepted:
+    """Process one of your uploaded recordings."""
+    audio_path = get_audio_file(body.audio, user)
     try:
-        job = jobs.submit_batch(audio_path, body)
+        job = jobs.submit_batch(audio_path, body, owner=user.uid)
     except ArtifactError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return JobAccepted(job_id=job.job_id, run_id=job.run_id)
@@ -103,6 +111,7 @@ def resume_run(
     body: ResumeRequest,
     paths: RunPaths = Depends(get_run_paths),
     jobs: JobManager = Depends(get_jobs),
+    user: accounts.User = Depends(require_user),
 ) -> JobAccepted:
     """Run whatever stages have not completed, or re-run from ``force_stage``.
 
@@ -129,7 +138,10 @@ def resume_run(
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     try:
         job = jobs.submit_resume(
-            paths, force_stage=body.force_stage, allow_mixed_config=body.allow_mixed_config
+            paths,
+            force_stage=body.force_stage,
+            allow_mixed_config=body.allow_mixed_config,
+            owner=user.uid,
         )
     except BusyError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

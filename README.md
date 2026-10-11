@@ -87,18 +87,37 @@ evaluation report. See `frontend/README.md` for development.
 
 **Accounts.** Open `http://127.0.0.1:8000/` for the landing page, then sign in.
 On the very first visit the sign-in page asks you to create the first account.
-Add or manage more from the terminal:
+After that, anyone who can reach the server can make their own account with
+**Create an account** on the sign-in page (turn this off with
+`ALLOW_SIGNUP=false`), or you can add accounts from the terminal:
 
 ```powershell
 meeting-assistant users add <name>              # prompts for a password
 meeting-assistant users list
 meeting-assistant users reset-password <name>
 meeting-assistant users remove <name>
+meeting-assistant users claim-runs <name>       # give runs with no owner to <name>
 ```
+
+**Each account sees only its own data.** Every run records the account that
+created it, and uploads go to that account's own folder
+(`data/audio/users/<id>/`). Meetings, transcripts, recordings, jobs and live
+sessions of other accounts are invisible: the API answers exactly as if they
+did not exist. Ownership uses a random id per account, not the username, so a
+deleted account re-created under the same name starts empty. The evaluation
+report is about the system, not anyone's meetings, so every account sees it.
+
+Runs made from the command line belong to `--user <name>`, or to the only
+account when there is just one. Meetings from before accounts existed went to
+the first account. With several accounts, a run with no owner is hidden from
+all of them until `users claim-runs`. One browser is signed in as one account
+at a time (the session is a cookie); use another browser or a private window
+for a second account.
 
 Passwords are stored hashed (scrypt) in `data/users.sqlite`; sessions are an
 HttpOnly cookie that lasts 14 days (`SESSION_TTL_DAYS`). Every page and API
-route except the landing page, sign-in and `/api/health` requires an account.
+route except the landing page, sign-in, sign-up and `/api/health` requires an
+account.
 
 ### Command line
 

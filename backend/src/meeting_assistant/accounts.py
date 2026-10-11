@@ -16,6 +16,11 @@ Security choices, each the standard one:
   contain usable sessions.
 * Logging in as a user that does not exist still runs a hash, so response
   time does not reveal which usernames exist.
+
+Each account also has a ``uid``: a random identifier that never changes and is
+never reused. Runs and uploads are owned by the uid, not the username, so an
+account that is deleted and re-created under the same name does not inherit
+the old account's meetings.
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ _SCHEMA = """
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY,
+    uid           TEXT,
     username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
     created_at    TEXT NOT NULL
@@ -67,8 +73,13 @@ class AccountError(MeetingAssistantError):
 @dataclass(frozen=True)
 class User:
     id: int
+    uid: str
     username: str
     created_at: str
+
+
+def _new_uid() -> str:
+    return secrets.token_hex(16)
 
 
 def _now() -> datetime:
@@ -147,14 +158,28 @@ def open_accounts(db_path: str | Path | None = None) -> Iterator[sqlite3.Connect
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         yield conn
         conn.commit()
     finally:
         conn.close()
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring a database from before uids existed up to date (idempotent)."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+    if "uid" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN uid TEXT")
+    for (user_id,) in conn.execute("SELECT id FROM users WHERE uid IS NULL").fetchall():
+        conn.execute("UPDATE users SET uid = ? WHERE id = ?", (_new_uid(), user_id))
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uid ON users(uid)")
+    conn.commit()
+
+
 def _user(row: sqlite3.Row) -> User:
-    return User(id=row["id"], username=row["username"], created_at=row["created_at"])
+    return User(
+        id=row["id"], uid=row["uid"], username=row["username"], created_at=row["created_at"]
+    )
 
 
 def user_count(conn: sqlite3.Connection) -> int:
@@ -176,11 +201,12 @@ def create_user(conn: sqlite3.Connection, username: str, password: str) -> User:
     if get_user(conn, username) is not None:
         raise AccountError(f"A user named {username!r} already exists.")
     created = _now().isoformat(timespec="seconds")
+    uid = _new_uid()
     cursor = conn.execute(
-        "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
-        (username, hash_password(password), created),
+        "INSERT INTO users (uid, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+        (uid, username, hash_password(password), created),
     )
-    return User(id=cursor.lastrowid or 0, username=username, created_at=created)
+    return User(id=cursor.lastrowid or 0, uid=uid, username=username, created_at=created)
 
 
 def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User | None:

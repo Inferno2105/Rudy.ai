@@ -55,8 +55,12 @@ than leaving them testing a contract the server no longer has.
   code handles credentials. Any 401 from a data endpoint re-checks
   `/api/auth/status`, and the route guard sends the user to `/login?next=…`.
 - **Routes.** `/` is the public landing page, `/login` signs in (or creates the
-  first account); the app lives under `/meetings`, `/new`, `/live`, `/runs/:id`
-  and `/evaluation`.
+  first account), `/signup` creates another account; the app lives under
+  `/meetings`, `/new`, `/live`, `/runs/:id` and `/evaluation`.
+- **One account per browser at a time.** The server scopes every response to
+  the signed-in account. Because the session cookie is shared by all tabs,
+  `watchSession` (in `routes.tsx`) resets every cached query the moment the
+  signed-in account changes, so a tab never shows the previous account's data.
 - **Progress over SSE.** `src/api/sse.ts` reads the `/events` stream with
   `fetch` and parses it itself, for an explicit abort on unmount, a chosen
   backoff and a clean stop on `end`. Segments are spliced by their

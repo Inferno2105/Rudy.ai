@@ -11,7 +11,7 @@ const notFound = (detail: string) => HttpResponse.json({ detail }, { status: 404
 export const defaultHandlers = [
   http.get(API('/api/health'), () => HttpResponse.json(f.health)),
   http.get(API('/api/auth/status'), () =>
-    HttpResponse.json({ setup_required: false, user: f.signedInUser }),
+    HttpResponse.json({ setup_required: false, user: f.signedInUser, signup_allowed: true }),
   ),
   http.get(API('/api/jobs/current'), () => HttpResponse.json(null)),
   http.get(API('/api/runs'), () => HttpResponse.json(f.runSummaries)),

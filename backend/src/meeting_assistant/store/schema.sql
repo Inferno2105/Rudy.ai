@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS runs (
     config_hash  TEXT,
     audio_path   TEXT,
     audio_sha256 TEXT,
+    owner        TEXT,                         -- accounts.User.uid; NULL = unclaimed
     ingested_at  TEXT NOT NULL
 );
 

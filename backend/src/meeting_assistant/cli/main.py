@@ -250,12 +250,44 @@ def cmd_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cli_owner(username: str | None) -> str | None:
+    """The uid that should own a run started from the CLI.
+
+    ``--user NAME`` picks an account. Without it, the only account owns the
+    run; with several accounts the run is left unclaimed (no account sees it
+    in the web UI until ``users claim-runs``), and a note says so.
+    """
+    from meeting_assistant import accounts
+    from meeting_assistant.ownership import sole_user
+
+    if username:
+        with accounts.open_accounts() as conn:
+            user = accounts.get_user(conn, username)
+        if user is None:
+            raise SystemExit(f"No account named {username!r} (see: meeting-assistant users list)")
+        return user.uid
+    user = sole_user()
+    if user is not None:
+        return user.uid
+    with accounts.open_accounts() as conn:
+        several = accounts.user_count(conn) > 1
+    if several:
+        print(
+            "Note: several accounts exist and --user was not given, so no account "
+            "will see this run in the web UI until `meeting-assistant users "
+            "claim-runs <name>`.",
+            file=sys.stderr,
+        )
+    return None
+
+
 def cmd_batch(args: argparse.Namespace) -> int:
     """Run (or resume) the batch pipeline over one audio file."""
     from meeting_assistant.errors import MeetingAssistantError, ProvenanceError
     from meeting_assistant.pipeline.batch import BatchOptions, run_batch
 
     opts = BatchOptions(
+        owner=None if args.resume else _cli_owner(args.user),
         num_speakers=args.num_speakers,
         resume_run_id=args.resume,
         force_stage=args.force,
@@ -470,6 +502,7 @@ def cmd_live(args: argparse.Namespace) -> int:
     from meeting_assistant.pipeline.live import LiveOptions, run_live
 
     opts = LiveOptions(
+        owner=_cli_owner(args.user),
         num_speakers=args.num_speakers,
         device=args.device,
         use_registry=not args.no_registry,
@@ -492,7 +525,7 @@ def cmd_live(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Run the HTTP API and web UI. There is no authentication."""
+    """Run the HTTP API and web UI (accounts: see ``meeting-assistant users``)."""
     import uvicorn
 
     host = args.host or config.API_HOST
@@ -533,7 +566,12 @@ def _read_new_password() -> str:
 def cmd_users(args: argparse.Namespace) -> int:
     """Manage web UI accounts (stored in data/users.sqlite)."""
     from meeting_assistant import accounts
+    from meeting_assistant.ownership import claim_if_single_user, claim_unowned
 
+    if args.users_cmd == "add":
+        # Runs made while one account existed are that account's; settle it
+        # before a second account makes the owner ambiguous.
+        claim_if_single_user()
     try:
         with accounts.open_accounts() as conn:
             if args.users_cmd == "list":
@@ -551,7 +589,18 @@ def cmd_users(args: argparse.Namespace) -> int:
                 print(f"Password changed for {args.username}; their sessions were signed out.")
             elif args.users_cmd == "remove":
                 accounts.delete_user(conn, args.username)
-                print(f"Removed {args.username}.")
+                print(
+                    f"Removed {args.username}. Their meetings stay on disk under "
+                    f"{config.RUNS_DIR}, visible to no account."
+                )
+            elif args.users_cmd == "claim-runs":
+                user = accounts.get_user(conn, args.username)
+                if user is None:
+                    raise accounts.AccountError(f"No user named {args.username!r}.")
+                claimed = claim_unowned(user.uid)
+                print(f"Gave {len(claimed)} unclaimed run(s) to {user.username}.")
+                for run_id in claimed:
+                    print(f"  {run_id}")
     except accounts.AccountError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -637,6 +686,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="exclude a stage from this run (repeatable)",
     )
     batch.add_argument(
+        "--user",
+        metavar="NAME",
+        help="account that owns the new run in the web UI (default: the only account)",
+    )
+    batch.add_argument(
         "--allow-mixed-config",
         action="store_true",
         help="with --resume: continue even if the configuration changed since the run's "
@@ -653,6 +707,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         metavar="N",
         help="true speaker count, if known -- improves diarization accuracy",
+    )
+    live.add_argument(
+        "--user",
+        metavar="NAME",
+        help="account that owns the run in the web UI (default: the only account)",
     )
     live.add_argument(
         "--no-registry",
@@ -678,6 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("add", "create an account (prompts for the password)"),
         ("reset-password", "set a new password and sign the user out everywhere"),
         ("remove", "delete an account"),
+        ("claim-runs", "give every run that has no owner to this account"),
     ):
         sub = users_sub.add_parser(name, help=text)
         sub.add_argument("username")

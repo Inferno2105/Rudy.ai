@@ -69,6 +69,10 @@ class RunManifest:
     status: str = STATUS_PARTIAL
     extra: dict[str, Any] = field(default_factory=dict)
     resumes: list[dict[str, Any]] = field(default_factory=list)
+    # The account that owns the run (``accounts.User.uid``), or ``None`` for a
+    # run nobody has claimed yet. Decides who can see the run in the web UI;
+    # not part of provenance, because it does not affect any output.
+    owner: str | None = None
     # Which execution new stage entries are attributed to. Not serialized: it
     # belongs to the process holding this object, not to the run.
     current_execution: int = 0
@@ -81,6 +85,7 @@ class RunManifest:
         mode: str,
         audio_path: str | None = None,
         data_origin: str = "real_audio",
+        owner: str | None = None,
     ) -> RunManifest:
         """Begin a new run: capture provenance and write the initial manifest.
 
@@ -94,6 +99,7 @@ class RunManifest:
             paths=paths,
             data_origin=data_origin,
             provenance_block=provenance.capture(audio_path=audio_path),
+            owner=owner,
         )
         manifest.save()
         return manifest
@@ -121,6 +127,7 @@ class RunManifest:
             status=data.get("status", STATUS_PARTIAL),
             extra=data.get("extra", {}),
             resumes=data.get("resumes", []),
+            owner=data.get("owner"),
         )
 
     def _execution_record(self, index: int) -> dict[str, Any]:
@@ -318,6 +325,7 @@ class RunManifest:
         return {
             "run_id": self.run_id,
             "mode": self.mode,
+            "owner": self.owner,
             "status": self.status,
             "data_origin": self.data_origin,
             "provenance": self.provenance_block,

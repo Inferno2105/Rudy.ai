@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meeting Assistant API",
-    "description": "Local Hindi-English meeting assistant: runs, transcripts, summaries, action items, live recording and evaluation. No authentication: run it on a trusted machine or network.",
+    "description": "Local Hindi-English meeting assistant: runs, transcripts, summaries, action items, live recording and evaluation. Sign in with a session cookie (`/api/auth/login`); each account sees only its own runs and recordings.",
     "version": "0.1.0"
   },
   "paths": {
@@ -56,7 +56,7 @@
           "auth"
         ],
         "summary": "Create First Account",
-        "description": "Create the first account and sign in. Refused once any account exists:\nfurther accounts are added with ``meeting-assistant users add``.",
+        "description": "Create the first account and sign in. Refused once any account exists\n(then use ``/auth/register``). Runs made before any account existed become\nthis account's.",
         "operationId": "create_first_account_api_auth_setup_post",
         "requestBody": {
           "content": {
@@ -78,6 +78,57 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "description": "Create another account and sign in as it. The new account starts empty:\nit sees only the meetings and recordings it creates.",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sign-up is turned off on this server"
+          },
+          "409": {
+            "description": "No account exists yet; use /auth/setup"
+          },
+          "429": {
+            "description": "Too many accounts created; see Retry-After"
           },
           "422": {
             "description": "Validation Error",
@@ -220,6 +271,7 @@
           "system"
         ],
         "summary": "List Audio",
+        "description": "Recordings you have uploaded (never another account's).",
         "operationId": "list_audio_api_audio_get",
         "responses": {
           "200": {
@@ -245,7 +297,7 @@
           "system"
         ],
         "summary": "Upload Audio",
-        "description": "Store an audio file in the audio directory under a sanitized name.\n\nThe name is reduced to a safe slug (so a client cannot choose where the\nfile lands), and an existing file of the same name is never overwritten\nwith different content: runs record their input's sha256 for provenance,\nand silently replacing the bytes behind a name would break that link for\nevery earlier run of it.",
+        "description": "Store an audio file in your own upload folder under a sanitized name.\n\nThe name is reduced to a safe slug (so a client cannot choose where the\nfile lands), and an existing file of the same name is never overwritten\nwith different content: runs record their input's sha256 for provenance,\nand silently replacing the bytes behind a name would break that link for\nevery earlier run of it.",
         "operationId": "upload_audio_api_uploads_post",
         "requestBody": {
           "content": {
@@ -287,7 +339,7 @@
           "system"
         ],
         "summary": "Rebuild Index",
-        "description": "Re-ingest every run directory -- the API form of ``meeting-assistant reindex``.",
+        "description": "Re-ingest every run directory -- the API form of ``meeting-assistant reindex``.\n\nWith a single account, runs the CLI made without ``--user`` become that\naccount's first (see :mod:`meeting_assistant.ownership`).",
         "operationId": "rebuild_index_api_index_rebuild_post",
         "responses": {
           "200": {
@@ -331,7 +383,7 @@
           "runs"
         ],
         "summary": "List Runs",
-        "description": "Runs from the SQLite index, newest first. Re-indexed automatically when\na job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI.",
+        "description": "Your runs from the SQLite index, newest first. Re-indexed automatically\nwhen a job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI.",
         "operationId": "list_runs_api_runs_get",
         "parameters": [
           {
@@ -424,6 +476,7 @@
           "runs"
         ],
         "summary": "Start Batch",
+        "description": "Process one of your uploaded recordings.",
         "operationId": "start_batch_api_runs_batch_post",
         "requestBody": {
           "content": {
@@ -928,7 +981,7 @@
           "jobs"
         ],
         "summary": "List Jobs",
-        "description": "Recent jobs, newest first (in memory only; cleared on restart).",
+        "description": "Your recent jobs, newest first (in memory only; cleared on restart).",
         "operationId": "list_jobs_api_jobs_get",
         "responses": {
           "200": {
@@ -954,6 +1007,7 @@
           "jobs"
         ],
         "summary": "Current Job",
+        "description": "The running job, if it is yours.",
         "operationId": "current_job_api_jobs_current_get",
         "responses": {
           "200": {
@@ -1357,6 +1411,12 @@
               }
             ],
             "description": "The signed-in user, if any"
+          },
+          "signup_allowed": {
+            "type": "boolean",
+            "title": "Signup Allowed",
+            "description": "New accounts can be created from the sign-in page",
+            "default": false
           }
         },
         "type": "object",

@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { ApiError } from '../api/client'
-import { useAuthStatus, useHealth, useLogin, useSetup } from '../api/queries'
+import { useAuthStatus, useHealth, useLogin, useRegister, useSetup } from '../api/queries'
 import { SunsetScene } from '../components/art'
 import { Button } from '../components/ui/button'
 import { Callout, LoadingBlock } from '../components/ui/feedback'
@@ -67,10 +67,16 @@ function PasswordInput({
   )
 }
 
-function SignInForm({ setup, next }: { setup: boolean; next: string }) {
+/** ``setup``: the server's first account; ``signup``: another account. */
+type FormKind = 'signin' | 'signup' | 'setup'
+
+function SignInForm({ kind, next }: { kind: FormKind; next: string }) {
   const navigate = useNavigate()
   const login = useLogin()
-  const create = useSetup()
+  const setupFirst = useSetup()
+  const register = useRegister()
+  const create = kind === 'setup' ? setupFirst : register
+  const setup = kind !== 'signin'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -160,19 +166,40 @@ function SignInForm({ setup, next }: { setup: boolean; next: string }) {
 
       <Button type="submit" variant="primary" className="h-11 w-full text-base" disabled={pending}>
         {setup ? <UserPlus aria-hidden /> : <LogIn aria-hidden />}
-        {pending ? 'Signing in…' : setup ? 'Create account' : 'Sign in'}
+        {pending
+          ? setup
+            ? 'Creating account…'
+            : 'Signing in…'
+          : setup
+            ? 'Create account'
+            : 'Sign in'}
       </Button>
     </form>
   )
 }
 
-export function LoginPage() {
+const HEADINGS: Record<FormKind, { title: string; lead: string }> = {
+  setup: {
+    title: 'Create your account',
+    lead: 'This is the first sign-in on this server, so this account will be its first user.',
+  },
+  signup: {
+    title: 'Create an account',
+    lead: 'Your account starts empty. You see only the meetings and recordings you add, and no other account can see yours.',
+  },
+  signin: { title: 'Welcome back', lead: 'Sign in to open your meetings.' },
+}
+
+export function LoginPage({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
   const [params] = useSearchParams()
   const next = safeNext(params.get('next'))
   const status = useAuthStatus()
   const health = useHealth()
-  const setup = status.data?.setup_required ?? false
-  useDocumentTitle(setup ? 'Create your account' : 'Sign in')
+  const signupAllowed = status.data?.signup_allowed ?? false
+  const kind: FormKind = status.data?.setup_required ? 'setup' : mode
+  const { title, lead } = HEADINGS[kind]
+  const nextQuery = params.get('next') ? `?next=${encodeURIComponent(next)}` : ''
+  useDocumentTitle(kind === 'signin' ? 'Sign in' : title)
 
   if (status.data?.user) return <Navigate to={next} replace />
 
@@ -224,14 +251,8 @@ export function LoginPage() {
           <div className="mb-8 lg:hidden">
             <BrandMark className="size-11" />
           </div>
-          <h1 className="text-brand text-3xl font-semibold tracking-tight">
-            {setup ? 'Create your account' : 'Welcome back'}
-          </h1>
-          <p className="text-muted mt-2 text-sm">
-            {setup
-              ? 'This is the first sign-in on this server, so this account will be its first user.'
-              : 'Sign in to open your meetings.'}
-          </p>
+          <h1 className="text-brand text-3xl font-semibold tracking-tight">{title}</h1>
+          <p className="text-muted mt-2 text-sm text-pretty">{lead}</p>
 
           <div className="mt-8">
             {status.isPending ? (
@@ -241,20 +262,37 @@ export function LoginPage() {
                 Start it with <code translate="no">meeting-assistant serve</code>, then reload this
                 page.
               </Callout>
+            ) : kind === 'signup' && !signupAllowed ? (
+              <Callout tone="info" title="Sign-up is turned off on this server">
+                Ask whoever runs it to add an account with{' '}
+                <code translate="no">meeting-assistant users add</code>.
+              </Callout>
             ) : (
-              <SignInForm setup={setup} next={next} />
+              <SignInForm key={kind} kind={kind} next={next} />
             )}
           </div>
+
+          {kind === 'signin' && signupAllowed ? (
+            <p className="text-muted mt-6 text-sm">
+              New here?{' '}
+              <Link to={`/signup${nextQuery}`} className="text-accent font-medium hover:underline">
+                Create an account
+              </Link>
+            </p>
+          ) : kind === 'signup' ? (
+            <p className="text-muted mt-6 text-sm">
+              Already have an account?{' '}
+              <Link to={`/login${nextQuery}`} className="text-accent font-medium hover:underline">
+                Sign in
+              </Link>
+            </p>
+          ) : null}
 
           <p className="text-faint mt-8 flex items-start gap-2 text-xs">
             <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>
               Passwords are stored hashed (scrypt); your session is a secure cookie scripts cannot
-              read. More accounts:{' '}
-              <code translate="no" className="font-mono">
-                meeting-assistant users add
-              </code>
-              .
+              read. Each account sees only its own meetings.
             </span>
           </p>
           <output className="text-faint mt-3 block text-xs">

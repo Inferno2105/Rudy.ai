@@ -51,8 +51,8 @@ def ingest_run(conn: sqlite3.Connection, run: RunPaths) -> bool:
         """
         INSERT INTO runs (
             run_id, mode, status, data_origin, created_at, finished_at,
-            git_commit, config_hash, audio_path, audio_sha256, ingested_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            git_commit, config_hash, audio_path, audio_sha256, owner, ingested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         """,
         (
             manifest.get("run_id", run.run_id),
@@ -65,6 +65,7 @@ def ingest_run(conn: sqlite3.Connection, run: RunPaths) -> bool:
             prov.get("config_hash"),
             input_info.get("path"),
             input_info.get("sha256"),
+            manifest.get("owner"),
         ),
     )
 

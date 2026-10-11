@@ -5,6 +5,11 @@ an audio file name), so each one is validated and then checked to resolve
 *inside* the directory it is meant to be in. Character validation alone is
 not enough on Windows, where a drive-relative or UNC form can still escape;
 the resolve-and-compare step is what actually guarantees it.
+
+Every run and recording also belongs to one account (see
+:mod:`meeting_assistant.ownership`). Someone else's run answers exactly like a
+run that does not exist (404), so ids cannot be probed to learn what other
+accounts have.
 """
 
 from __future__ import annotations
@@ -14,10 +19,12 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 
-from meeting_assistant import config
+from meeting_assistant import accounts, config
+from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.jobs import JobManager
+from meeting_assistant.ownership import run_owner, user_audio_dir
 from meeting_assistant.paths import RunPaths
 from meeting_assistant.store.db import open_db
 
@@ -35,17 +42,20 @@ def safe_child(base: Path, name: str) -> Path:
     return candidate
 
 
-def get_run_paths(run_id: str) -> RunPaths:
-    """Path dependency for ``/runs/{run_id}/...`` routes."""
+def get_run_paths(
+    run_id: str, user: accounts.User = Depends(require_user)
+) -> RunPaths:
+    """Path dependency for ``/runs/{run_id}/...``: a run the signed-in user owns."""
     root = safe_child(config.RUNS_DIR, run_id)
-    if not root.is_dir():
+    paths = RunPaths(run_id=run_id, root=root)
+    if not root.is_dir() or run_owner(paths) != user.uid:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No such run: {run_id}")
-    return RunPaths(run_id=run_id, root=root)
+    return paths
 
 
-def get_audio_file(name: str) -> Path:
-    """An existing file inside ``AUDIO_DIR``, by bare file name."""
-    path = safe_child(config.AUDIO_DIR, name)
+def get_audio_file(name: str, user: accounts.User) -> Path:
+    """An existing file in the user's own upload folder, by bare file name."""
+    path = safe_child(user_audio_dir(user.uid), name)
     if not path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No such audio file: {name}")
     return path

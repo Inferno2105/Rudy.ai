@@ -45,7 +45,28 @@ def connect(
 def apply_schema(conn: sqlite3.Connection) -> None:
     """Create any tables/indexes that don't already exist. Safe to call repeatedly."""
     conn.executescript(_schema_sql())
+    _add_owner_column(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_owner ON runs(owner)")
     conn.commit()
+
+
+def _add_owner_column(conn: sqlite3.Connection) -> None:
+    """Upgrade an index from before runs had owners.
+
+    Fills the new column from each run's manifest, the authoritative copy, so
+    the run list is right immediately rather than after a manual reindex.
+    """
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(runs)")}
+    if "owner" in columns:
+        return
+    from meeting_assistant.io_utils import read_json
+
+    conn.execute("ALTER TABLE runs ADD COLUMN owner TEXT")
+    for (run_id,) in conn.execute("SELECT run_id FROM runs").fetchall():
+        manifest_path = config.RUNS_DIR / run_id / "manifest.json"
+        if manifest_path.is_file():
+            owner = read_json(manifest_path).get("owner")
+            conn.execute("UPDATE runs SET owner = ? WHERE run_id = ?", (owner, run_id))
 
 
 @contextmanager

@@ -55,10 +55,32 @@ export interface paths {
         put?: never;
         /**
          * Create First Account
-         * @description Create the first account and sign in. Refused once any account exists:
-         *     further accounts are added with ``meeting-assistant users add``.
+         * @description Create the first account and sign in. Refused once any account exists
+         *     (then use ``/auth/register``). Runs made before any account existed become
+         *     this account's.
          */
         post: operations["create_first_account_api_auth_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register
+         * @description Create another account and sign in as it. The new account starts empty:
+         *     it sees only the meetings and recordings it creates.
+         */
+        post: operations["register_api_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -146,7 +168,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Audio */
+        /**
+         * List Audio
+         * @description Recordings you have uploaded (never another account's).
+         */
         get: operations["list_audio_api_audio_get"];
         put?: never;
         post?: never;
@@ -167,7 +192,7 @@ export interface paths {
         put?: never;
         /**
          * Upload Audio
-         * @description Store an audio file in the audio directory under a sanitized name.
+         * @description Store an audio file in your own upload folder under a sanitized name.
          *
          *     The name is reduced to a safe slug (so a client cannot choose where the
          *     file lands), and an existing file of the same name is never overwritten
@@ -194,6 +219,9 @@ export interface paths {
         /**
          * Rebuild Index
          * @description Re-ingest every run directory -- the API form of ``meeting-assistant reindex``.
+         *
+         *     With a single account, runs the CLI made without ``--user`` become that
+         *     account's first (see :mod:`meeting_assistant.ownership`).
          */
         post: operations["rebuild_index_api_index_rebuild_post"];
         delete?: never;
@@ -231,8 +259,8 @@ export interface paths {
         };
         /**
          * List Runs
-         * @description Runs from the SQLite index, newest first. Re-indexed automatically when
-         *     a job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI.
+         * @description Your runs from the SQLite index, newest first. Re-indexed automatically
+         *     when a job finishes; ``POST /api/index/rebuild`` covers runs made by the CLI.
          */
         get: operations["list_runs_api_runs_get"];
         put?: never;
@@ -252,7 +280,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Batch */
+        /**
+         * Start Batch
+         * @description Process one of your uploaded recordings.
+         */
         post: operations["start_batch_api_runs_batch_post"];
         delete?: never;
         options?: never;
@@ -464,7 +495,7 @@ export interface paths {
         };
         /**
          * List Jobs
-         * @description Recent jobs, newest first (in memory only; cleared on restart).
+         * @description Your recent jobs, newest first (in memory only; cleared on restart).
          */
         get: operations["list_jobs_api_jobs_get"];
         put?: never;
@@ -482,7 +513,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Current Job */
+        /**
+         * Current Job
+         * @description The running job, if it is yours.
+         */
         get: operations["current_job_api_jobs_current_get"];
         put?: never;
         post?: never;
@@ -618,6 +652,12 @@ export interface components {
             setup_required: boolean;
             /** @description The signed-in user, if any */
             user?: components["schemas"]["UserOut"] | null;
+            /**
+             * Signup Allowed
+             * @description New accounts can be created from the sign-in page
+             * @default false
+             */
+            signup_allowed: boolean;
         };
         /** BatchRequest */
         BatchRequest: {
@@ -1309,6 +1349,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    register_api_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Credentials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Sign-up is turned off on this server */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No account exists yet; use /auth/setup */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Too many accounts created; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

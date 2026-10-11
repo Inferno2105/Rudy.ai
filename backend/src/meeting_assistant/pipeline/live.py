@@ -105,6 +105,8 @@ class LiveOptions:
     device: int | None = None
     use_registry: bool = True
     vad_config: VadConfig = DEFAULT_VAD_CONFIG
+    # Account that owns the new run (``accounts.User.uid``).
+    owner: str | None = None
 
 
 @dataclass
@@ -268,13 +270,13 @@ def _run_tail_stages(ctx: StageContext, manifest: RunManifest, paths: RunPaths) 
             log.info("Completed stage %s in %.1fs", stage.name, elapsed)
 
 
-def create_live_run() -> RunPaths:
+def create_live_run(*, owner: str | None = None) -> RunPaths:
     """Create a live run directory and its initial manifest, without recording.
 
     Lets the HTTP API return a ``run_id`` before the recording thread starts.
     """
     paths = new_run("live")
-    RunManifest.start(paths, mode="live")
+    RunManifest.start(paths, mode="live", owner=owner)
     return paths
 
 
@@ -310,7 +312,7 @@ def run_live(
     opts = opts or LiveOptions()
     config.validate_config(require_hf_token=True, require_ffmpeg=True, require_ollama=False)
 
-    paths = paths or create_live_run()
+    paths = paths or create_live_run(owner=opts.owner)
     manifest = RunManifest.load(paths)
     log.info("Run %s started", paths.run_id)
     log_handler = attach_run_log(paths.log_path)

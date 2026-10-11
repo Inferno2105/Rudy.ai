@@ -9,12 +9,13 @@ import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { MeetingsPage } from './pages/MeetingsPage'
 
-// The landing and sign-in pages are public; everything under the app shell
+// The landing, sign-in and sign-up pages are public; everything under the app shell
 // needs a signed-in user. App pages other than Meetings load on first visit,
 // so opening the app does not download charting code it may never use.
 export const routes: RouteObject[] = [
   { path: '/', element: <LandingPage /> },
   { path: '/login', element: <LoginPage /> },
+  { path: '/signup', element: <LoginPage mode="signup" /> },
   {
     element: <RequireAuth />,
     children: [
@@ -50,10 +51,31 @@ export const routes: RouteObject[] = [
   },
 ]
 
-/** When any request finds the session gone, re-check who is signed in; the
- * route guard then sends the user to the sign-in page. */
+/**
+ * When any request finds the session gone, re-check who is signed in; the
+ * route guard then sends the user to the sign-in page.
+ *
+ * The session cookie belongs to the whole browser, so signing in as someone
+ * else in another tab changes who this tab is too. Whenever the signed-in
+ * account changes, every cached response is reset at once -- before React
+ * renders with it -- so one account's meetings never appear under another's.
+ */
 export function watchSession(client: QueryClient): QueryClient {
   setUnauthorizedHandler(() => void client.invalidateQueries({ queryKey: keys.auth }))
+  let signedInAs: string | null | undefined
+  client.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.query.queryKey[0] !== keys.auth[0]) return
+    const data = event.query.state.data as { user?: { username: string } | null } | undefined
+    if (data === undefined) return
+    const user = data.user?.username ?? null
+    if (signedInAs !== undefined && user !== signedInAs) {
+      // reset, not remove: pages already on screen must drop their data too.
+      void client.resetQueries({
+        predicate: (query) => query.queryKey[0] !== 'health' && query.queryKey[0] !== 'auth',
+      })
+    }
+    signedInAs = user
+  })
   return client
 }
 

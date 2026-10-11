@@ -13,6 +13,10 @@ Job state lives only in memory. The run directory is the durable record: if
 the server restarts, queued jobs are lost but their runs survive with status
 ``partial``, and ``POST /api/runs/{id}/resume`` picks them up -- the same
 recovery path as the CLI's ``--resume``.
+
+The queue is shared by every account (there is one GPU), but each job records
+its owner: queries take the asking account's uid and only ever return that
+account's jobs, and a "busy" refusal does not name another account's run.
 """
 
 from __future__ import annotations
@@ -55,6 +59,7 @@ class _JobRecord:
     kind: JobKind
     run_id: str
     work: Callable[[], object]
+    owner: str | None = None
     state: JobState = "queued"
     error: str | None = None
     submitted_at: str = field(default_factory=_now)
@@ -87,16 +92,16 @@ def _default_run_live(opts, *, paths, stop_event):
     return run_live(opts, paths=paths, stop_event=stop_event)
 
 
-def _default_create_batch_run(audio_path: Path) -> RunPaths:
+def _default_create_batch_run(audio_path: Path, *, owner: str | None = None) -> RunPaths:
     from meeting_assistant.pipeline.batch import create_batch_run
 
-    return create_batch_run(audio_path)
+    return create_batch_run(audio_path, owner=owner)
 
 
-def _default_create_live_run() -> RunPaths:
+def _default_create_live_run(*, owner: str | None = None) -> RunPaths:
     from meeting_assistant.pipeline.live import create_live_run
 
-    return create_live_run()
+    return create_live_run(owner=owner)
 
 
 def _default_on_finished(paths: RunPaths) -> None:
@@ -140,8 +145,8 @@ class JobManager:
         *,
         run_batch: Callable = _default_run_batch,
         run_live: Callable = _default_run_live,
-        create_batch_run: Callable[[Path], RunPaths] = _default_create_batch_run,
-        create_live_run: Callable[[], RunPaths] = _default_create_live_run,
+        create_batch_run: Callable[..., RunPaths] = _default_create_batch_run,
+        create_live_run: Callable[..., RunPaths] = _default_create_live_run,
         on_finished: Callable[[RunPaths], None] = _default_on_finished,
     ) -> None:
         self._run_batch = run_batch
@@ -176,13 +181,13 @@ class JobManager:
             self._worker.join(timeout=timeout)
 
     # -- submission ----------------------------------------------------------
-    def submit_batch(self, audio_path: Path, opts) -> Job:
+    def submit_batch(self, audio_path: Path, opts, *, owner: str | None = None) -> Job:
         """Create the run now (so its id can be returned) and queue its execution."""
         from meeting_assistant.pipeline.batch import BatchOptions
 
-        paths = self._create_batch_run(audio_path)
+        paths = self._create_batch_run(audio_path, owner=owner)
         run_opts = BatchOptions(num_speakers=opts.num_speakers, resume_run_id=paths.run_id)
-        return self._enqueue("batch", paths, lambda: self._run_batch(None, run_opts))
+        return self._enqueue("batch", paths, lambda: self._run_batch(None, run_opts), owner)
 
     def submit_resume(
         self,
@@ -190,6 +195,7 @@ class JobManager:
         *,
         force_stage: str | None = None,
         allow_mixed_config: bool = False,
+        owner: str | None = None,
     ) -> Job:
         from meeting_assistant.pipeline.batch import BatchOptions
 
@@ -203,31 +209,37 @@ class JobManager:
             force_stage=force_stage,
             allow_mixed_config=allow_mixed_config,
         )
-        return self._enqueue("resume", paths, lambda: self._run_batch(None, run_opts))
+        return self._enqueue("resume", paths, lambda: self._run_batch(None, run_opts), owner)
 
-    def start_live(self, opts) -> Job:
+    def start_live(self, opts, *, owner: str | None = None) -> Job:
         with self._lock:
             busy = next((r for r in self._jobs.values() if r.state in _ACTIVE), None)
             if busy is not None:
-                raise BusyError(f"Busy with {busy.kind} job {busy.job_id} (run {busy.run_id})")
+                if busy.owner == owner:
+                    raise BusyError(
+                        f"Busy with {busy.kind} job {busy.job_id} (run {busy.run_id})"
+                    )
+                raise BusyError("Busy with another account's job; try again when it finishes")
             stop_event = threading.Event()
-            paths = self._create_live_run()
+            paths = self._create_live_run(owner=owner)
             record = self._new_record(
                 "live",
                 paths,
                 lambda: self._run_live(opts, paths=paths, stop_event=stop_event),
+                owner,
             )
             record.stop_event = stop_event
         self._queue.put(record)
         return record.snapshot()
 
-    def stop_live(self) -> Job:
+    def stop_live(self, *, owner: str | None = None) -> Job:
+        """Stop ``owner``'s live session (another account's is never touched)."""
         with self._lock:
             record = next(
                 (
                     r
                     for r in self._jobs.values()
-                    if r.kind == "live" and r.state in ("queued", "running")
+                    if r.kind == "live" and r.state in ("queued", "running") and r.owner == owner
                 ),
                 None,
             )
@@ -238,16 +250,18 @@ class JobManager:
             return record.snapshot()
 
     # -- queries ---------------------------------------------------------------
-    def list_jobs(self) -> list[Job]:
+    def list_jobs(self, *, owner: str | None = None) -> list[Job]:
+        """``owner``'s jobs, newest first."""
         with self._lock:
-            return [r.snapshot() for r in reversed(self._jobs.values())]
+            return [r.snapshot() for r in reversed(self._jobs.values()) if r.owner == owner]
 
-    def current(self) -> Job | None:
+    def current(self, *, owner: str | None = None) -> Job | None:
+        """The running job, if it is ``owner``'s."""
         with self._lock:
             record = next(
                 (r for r in self._jobs.values() if r.state in ("running", "stopping")), None
             )
-            return record.snapshot() if record else None
+            return record.snapshot() if record and record.owner == owner else None
 
     def latest_for_run(self, run_id: str) -> Job | None:
         with self._lock:
@@ -259,18 +273,32 @@ class JobManager:
         return job is not None and job.state in _ACTIVE
 
     # -- internals -------------------------------------------------------------
-    def _new_record(self, kind: JobKind, paths: RunPaths, work: Callable[[], object]):
+    def _new_record(
+        self,
+        kind: JobKind,
+        paths: RunPaths,
+        work: Callable[[], object],
+        owner: str | None = None,
+    ):
         """Caller holds the lock."""
         job_id = f"job-{next(self._ids)}"
-        record = _JobRecord(job_id=job_id, kind=kind, run_id=paths.run_id, work=work)
+        record = _JobRecord(
+            job_id=job_id, kind=kind, run_id=paths.run_id, work=work, owner=owner
+        )
         self._jobs[job_id] = record
         self._paths[job_id] = paths
         self._trim_history()
         return record
 
-    def _enqueue(self, kind: JobKind, paths: RunPaths, work: Callable[[], object]) -> Job:
+    def _enqueue(
+        self,
+        kind: JobKind,
+        paths: RunPaths,
+        work: Callable[[], object],
+        owner: str | None = None,
+    ) -> Job:
         with self._lock:
-            record = self._new_record(kind, paths, work)
+            record = self._new_record(kind, paths, work, owner)
         self._queue.put(record)
         return record.snapshot()
 

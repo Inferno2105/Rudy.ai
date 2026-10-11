@@ -64,6 +64,16 @@ export function useSetup() {
   })
 }
 
+/** Create another account (not the first) and sign in as it. */
+export function useRegister() {
+  const reset = useResetAfterAuth()
+  return useMutation({
+    mutationFn: (body: { username: string; password: string }) =>
+      unwrap(api.POST('/api/auth/register', { body })),
+    onSuccess: reset,
+  })
+}
+
 export function useLogout() {
   const reset = useResetAfterAuth()
   return useMutation({

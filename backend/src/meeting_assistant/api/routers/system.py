@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
-from meeting_assistant import __version__, config
+from meeting_assistant import __version__, accounts, config
 from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.deps import get_db
 from meeting_assistant.api.schemas.eval import EvalReport
@@ -24,6 +24,7 @@ from meeting_assistant.api.schemas.system import (
 )
 from meeting_assistant.io_utils import read_json
 from meeting_assistant.logging_setup import get_logger
+from meeting_assistant.ownership import claim_if_single_user, user_audio_dir
 from meeting_assistant.paths import slugify
 
 log = get_logger(__name__)
@@ -83,12 +84,14 @@ def _describe(path: Path) -> AudioFile:
 
 
 @router.get("/audio", response_model=list[AudioFile])
-def list_audio() -> list[AudioFile]:
-    if not config.AUDIO_DIR.is_dir():
+def list_audio(user: accounts.User = Depends(require_user)) -> list[AudioFile]:
+    """Recordings you have uploaded (never another account's)."""
+    folder = user_audio_dir(user.uid)
+    if not folder.is_dir():
         return []
     return [
         _describe(path)
-        for path in sorted(config.AUDIO_DIR.iterdir())
+        for path in sorted(folder.iterdir())
         if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
     ]
 
@@ -100,8 +103,12 @@ def _sha256(path: Path) -> str:
 
 
 @router.post("/uploads", response_model=UploadResult, status_code=status.HTTP_201_CREATED)
-def upload_audio(request: Request, file: UploadFile = File(...)) -> UploadResult:
-    """Store an audio file in the audio directory under a sanitized name.
+def upload_audio(
+    request: Request,
+    file: UploadFile = File(...),
+    user: accounts.User = Depends(require_user),
+) -> UploadResult:
+    """Store an audio file in your own upload folder under a sanitized name.
 
     The name is reduced to a safe slug (so a client cannot choose where the
     file lands), and an existing file of the same name is never overwritten
@@ -124,8 +131,9 @@ def upload_audio(request: Request, file: UploadFile = File(...)) -> UploadResult
         )
     name = f"{slugify(original.stem)}{suffix}"
 
-    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    partial = config.AUDIO_DIR / f".upload-{uuid.uuid4().hex}.part"
+    folder = user_audio_dir(user.uid)
+    folder.mkdir(parents=True, exist_ok=True)
+    partial = folder / f".upload-{uuid.uuid4().hex}.part"
     digest = hashlib.sha256()
     size = 0
     try:
@@ -141,7 +149,7 @@ def upload_audio(request: Request, file: UploadFile = File(...)) -> UploadResult
                 out.write(block)
 
         sha256 = digest.hexdigest()
-        target = config.AUDIO_DIR / name
+        target = folder / name
         if target.exists():
             if _sha256(target) != sha256:
                 raise HTTPException(
@@ -164,10 +172,15 @@ def upload_audio(request: Request, file: UploadFile = File(...)) -> UploadResult
 
 @router.post("/index/rebuild", response_model=IndexRebuildResult)
 def rebuild_index(conn: sqlite3.Connection = Depends(get_db)) -> IndexRebuildResult:
-    """Re-ingest every run directory -- the API form of ``meeting-assistant reindex``."""
+    """Re-ingest every run directory -- the API form of ``meeting-assistant reindex``.
+
+    With a single account, runs the CLI made without ``--user`` become that
+    account's first (see :mod:`meeting_assistant.ownership`).
+    """
     from meeting_assistant.paths import list_runs
     from meeting_assistant.store.ingest import reindex_all
 
+    claim_if_single_user()
     runs = list_runs()
     return IndexRebuildResult(indexed=reindex_all(conn, runs), total=len(runs))
 

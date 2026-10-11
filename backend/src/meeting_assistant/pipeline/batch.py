@@ -54,6 +54,8 @@ class BatchOptions:
     # Resume even if the output-affecting configuration changed since the
     # run's earlier stages. Marks the run inconsistent; debugging only.
     allow_mixed_config: bool = False
+    # Account that owns a new run (``accounts.User.uid``); ignored on resume.
+    owner: str | None = None
 
 
 def _validate_stage_names(names: str | Iterable[str]) -> None:
@@ -131,7 +133,7 @@ def _final_status(manifest: RunManifest, selected: list[StageSpec], aborted: boo
     return STATUS_COMPLETED if statuses == {STAGE_OK} else STATUS_PARTIAL
 
 
-def create_batch_run(audio_path: str | Path) -> RunPaths:
+def create_batch_run(audio_path: str | Path, *, owner: str | None = None) -> RunPaths:
     """Create a run directory and its initial manifest, without running anything.
 
     Split out so a caller that must hand back a ``run_id`` before the
@@ -147,7 +149,7 @@ def create_batch_run(audio_path: str | Path) -> RunPaths:
     if not audio_path.exists():
         raise ArtifactError(f"Audio file not found: {audio_path}")
     paths = new_run("batch", audio_path)
-    RunManifest.start(paths, mode="batch", audio_path=str(audio_path))
+    RunManifest.start(paths, mode="batch", audio_path=str(audio_path), owner=owner)
     return paths
 
 
@@ -194,7 +196,7 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
     else:
         if audio_path is None:
             raise ArtifactError("Audio file not found: None")
-        paths = create_batch_run(audio_path)
+        paths = create_batch_run(audio_path, owner=opts.owner)
         manifest = RunManifest.load(paths)
 
     log.info("Run %s (%s)", paths.run_id, "resumed" if opts.resume_run_id else "started")

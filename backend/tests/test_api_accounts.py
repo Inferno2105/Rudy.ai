@@ -40,7 +40,11 @@ def test_a_malformed_stored_hash_never_verifies():
 
 # --- first-account setup -----------------------------------------------------
 def test_status_asks_for_setup_until_an_account_exists(anon):
-    assert anon.get("/api/auth/status").json() == {"setup_required": True, "user": None}
+    assert anon.get("/api/auth/status").json() == {
+        "setup_required": True,
+        "user": None,
+        "signup_allowed": True,
+    }
     response = anon.post("/api/auth/setup", json=TEST_USER)
     assert response.status_code == 201
     status = anon.get("/api/auth/status").json()

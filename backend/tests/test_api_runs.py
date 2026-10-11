@@ -8,8 +8,8 @@ from meeting_assistant.io_utils import read_json, write_json
 
 
 @pytest.fixture
-def finished_run(client, audio_file, wait_for_job):
-    response = client.post("/api/runs/batch", json={"audio": audio_file.name})
+def finished_run(client, uploaded_audio, wait_for_job):
+    response = client.post("/api/runs/batch", json={"audio": uploaded_audio.name})
     assert response.status_code == 202
     run_id = response.json()["run_id"]
     wait_for_job(run_id)
@@ -89,10 +89,10 @@ def test_run_ids_that_could_escape_the_runs_directory_are_refused(client, run_id
     assert response.status_code != 200
 
 
-def test_source_audio_is_served_for_a_batch_run(client, finished_run, audio_file):
+def test_source_audio_is_served_for_a_batch_run(client, finished_run, uploaded_audio):
     response = client.get(f"/api/runs/{finished_run}/audio")
     assert response.status_code == 200
-    assert response.content == audio_file.read_bytes()
+    assert response.content == uploaded_audio.read_bytes()
 
 
 def test_source_audio_supports_range_requests_so_the_player_can_seek(client, finished_run):

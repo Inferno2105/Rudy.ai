@@ -1,4 +1,4 @@
-"""Sign-in: first-account setup, login, logout, password change, status."""
+"""Accounts: first-account setup, sign-up, login, logout, password change, status."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import math
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from meeting_assistant import accounts
+from meeting_assistant import accounts, config
 from meeting_assistant.api.auth import (
     LoginThrottle,
     clear_session_cookie,
@@ -16,10 +16,13 @@ from meeting_assistant.api.auth import (
     set_session_cookie,
 )
 from meeting_assistant.api.schemas.auth import AuthStatus, Credentials, PasswordChange, UserOut
+from meeting_assistant.ownership import claim_if_single_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 throttle = LoginThrottle()
+# Account creation per address: a few are free, then each waits longer.
+signup_throttle = LoginThrottle(free_attempts=5, window_sec=3600)
 
 # One message for unknown user and wrong password, so the response does not
 # reveal which usernames exist.
@@ -40,13 +43,18 @@ def auth_status(request: Request) -> AuthStatus:
     with accounts.open_accounts() as conn:
         setup_required = accounts.user_count(conn) == 0
     user = None if setup_required else current_user(request)
-    return AuthStatus(setup_required=setup_required, user=_out(user) if user else None)
+    return AuthStatus(
+        setup_required=setup_required,
+        user=_out(user) if user else None,
+        signup_allowed=config.ALLOW_SIGNUP,
+    )
 
 
 @router.post("/setup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def create_first_account(body: Credentials, request: Request, response: Response) -> UserOut:
-    """Create the first account and sign in. Refused once any account exists:
-    further accounts are added with ``meeting-assistant users add``."""
+    """Create the first account and sign in. Refused once any account exists
+    (then use ``/auth/register``). Runs made before any account existed become
+    this account's."""
     with accounts.open_accounts() as conn:
         if accounts.user_count(conn) > 0:
             raise HTTPException(
@@ -57,6 +65,52 @@ def create_first_account(body: Credentials, request: Request, response: Response
         except accounts.AccountError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
         token = accounts.create_session(conn, user)
+    claim_if_single_user()
+    set_session_cookie(response, request, token)
+    return _out(user)
+
+
+@router.post(
+    "/register",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        403: {"description": "Sign-up is turned off on this server"},
+        409: {"description": "No account exists yet; use /auth/setup"},
+        429: {"description": "Too many accounts created; see Retry-After"},
+    },
+)
+def register(body: Credentials, request: Request, response: Response) -> UserOut:
+    """Create another account and sign in as it. The new account starts empty:
+    it sees only the meetings and recordings it creates."""
+    if not config.ALLOW_SIGNUP:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Sign-up is turned off on this server. Ask whoever runs it to add an account.",
+        )
+    key = f"signup|{_client(request)}"
+    wait = signup_throttle.retry_after(key)
+    if wait > 0:
+        seconds = math.ceil(wait)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many new accounts from this address. Try again in {seconds} seconds.",
+            headers={"Retry-After": str(seconds)},
+        )
+    # While one account exists, unclaimed runs are its own: settle that
+    # before a second account makes the owner ambiguous.
+    claim_if_single_user()
+    with accounts.open_accounts() as conn:
+        if accounts.user_count(conn) == 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "No account exists yet; create the first one."
+            )
+        try:
+            user = accounts.create_user(conn, body.username, body.password)
+        except accounts.AccountError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        token = accounts.create_session(conn, user)
+    signup_throttle.failed(key)  # counts creations, not failures
     set_session_cookie(response, request, token)
     return _out(user)
 
