@@ -14,7 +14,14 @@
         "allowConstantExport": true
       }
     ],
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+    "jsx-a11y/no-noninteractive-tabindex": [
+      "error",
+      {
+        "tags": ["section"],
+        "roles": ["tabpanel"]
+      }
+    ]
   },
   "ignorePatterns": ["src/api/schema.d.ts"]
 }

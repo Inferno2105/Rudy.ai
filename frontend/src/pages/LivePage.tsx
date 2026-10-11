@@ -1,5 +1,13 @@
 import { ArrowDown, CircleStop, ExternalLink, Mic } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react'
 import { Link } from 'react-router'
 
 import { useCurrentJob, useDevices, useStartLive, useStopLive } from '../api/queries'
@@ -13,7 +21,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardBody, CardHeader } from '../components/ui/card'
 import { Callout, EmptyState, LoadingBlock } from '../components/ui/feedback'
 import { Field, Input, Select, Switch } from '../components/ui/field'
-import { formatClock } from '../lib/format'
+import { formatClock, formatFixed, NBSP, plural } from '../lib/format'
 import { speakerPalette } from '../lib/speakers'
 import { useDocumentTitle } from '../lib/utils'
 
@@ -35,6 +43,7 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
   const [device, setDevice] = useState<string>('')
   const [speakers, setSpeakers] = useState('')
   const [useRegistry, setUseRegistry] = useState(true)
+  const speakersInput = useRef<HTMLInputElement>(null)
 
   const defaultDevice = devices.data?.find((d) => d.is_default)?.index
   const selectedDevice = device === '' ? (defaultDevice ?? null) : Number(device)
@@ -45,7 +54,10 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (speakersInvalid) return
+    if (speakersInvalid) {
+      speakersInput.current?.focus()
+      return
+    }
     start.mutate(
       { device: selectedDevice, num_speakers: speakerCount, use_registry: useRegistry },
       { onSuccess: (accepted) => onStarted(accepted.run_id) },
@@ -67,7 +79,10 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
               ) : devices.isError ? (
                 <ErrorState error={devices.error} onRetry={() => void devices.refetch()} />
               ) : devices.data.length === 0 ? (
-                <p className="text-danger text-sm">The server has no input device.</p>
+                <p className="text-danger text-sm">
+                  The server has no input device. Connect a microphone to the server machine, then
+                  reload this page.
+                </p>
               ) : (
                 <Select
                   id={id}
@@ -86,18 +101,19 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
           </Field>
           <Field
             label="Number of speakers"
-            hint="Optional upper bound for each chunk's diarization."
+            hint="Optional upper bound for each chunk's diarization. Leave blank to detect automatically."
             error={speakersInvalid ? 'Enter a whole number from 1 to 20.' : undefined}
           >
             {({ id, describedBy }) => (
               <Input
+                ref={speakersInput}
                 id={id}
                 aria-describedby={describedBy}
                 aria-invalid={speakersInvalid || undefined}
                 name="num_speakers"
                 autoComplete="off"
                 inputMode="numeric"
-                placeholder="Detect automatically"
+                placeholder="e.g. 3…"
                 value={speakers}
                 onChange={(event) => setSpeakers(event.target.value)}
               />
@@ -114,7 +130,7 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
               {start.error.message}
             </Callout>
           ) : null}
-          <Button type="submit" variant="primary" disabled={start.isPending || speakersInvalid}>
+          <Button type="submit" variant="primary" disabled={start.isPending}>
             <Mic aria-hidden /> {start.isPending ? 'Starting…' : 'Start recording'}
           </Button>
         </form>
@@ -146,13 +162,19 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
   )
 
   // Follow new segments unless the reader has scrolled up to re-read.
-  const list = useRef<HTMLDivElement>(null)
+  // A ref to scroll it, and state to hand the element to the transcript's
+  // virtualizer once it exists.
+  const listRef = useRef<HTMLElement | null>(null)
+  const [list, setList] = useState<HTMLElement | null>(null)
+  const attachList = useCallback((node: HTMLElement | null) => {
+    listRef.current = node
+    setList(node)
+  }, [])
   const [pinned, setPinned] = useState(true)
   const segmentCount = events.segments.length
   useLayoutEffect(() => {
-    if (pinned && segmentCount > 0 && list.current) {
-      list.current.scrollTop = list.current.scrollHeight
-    }
+    const element = listRef.current
+    if (pinned && segmentCount > 0 && element) element.scrollTop = element.scrollHeight
   }, [segmentCount, pinned])
 
   const finished = events.ended
@@ -203,13 +225,16 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
           }
         />
         <div className="relative flex-1">
-          <div
-            ref={list}
+          {/* Focusable so keyboard users can scroll it; named so the focus stop makes sense. */}
+          <section
+            ref={attachList}
+            aria-label="Live transcript, scrollable"
+            tabIndex={0}
             onScroll={(event) => {
               const el = event.currentTarget
               setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 48)
             }}
-            className="absolute inset-0 overflow-y-auto px-5 py-4"
+            className="absolute inset-0 overflow-y-auto overscroll-contain px-5 py-4"
           >
             {events.segments.length === 0 ? (
               <EmptyState
@@ -221,9 +246,14 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
                   : 'Segments appear here a few seconds after each pause in speech.'}
               </EmptyState>
             ) : (
-              <Transcript segments={events.segments} palette={palette} label="Live transcript" />
+              <Transcript
+                segments={events.segments}
+                palette={palette}
+                label="Live transcript"
+                scrollElement={list}
+              />
             )}
-          </div>
+          </section>
           {!pinned ? (
             <Button
               size="sm"
@@ -236,7 +266,7 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
           ) : null}
         </div>
         <p className="sr-only" aria-live="polite">
-          {events.segments.length} segments transcribed
+          {plural(events.segments.length, 'segment')} transcribed
         </p>
       </Card>
 
@@ -253,7 +283,7 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted text-sm">Elapsed</span>
-              <span className="text-fg font-mono text-sm tabular-nums">
+              <span translate="no" className="text-fg font-mono text-sm tabular-nums">
                 {elapsed != null ? formatClock(elapsed) : '—'}
               </span>
             </div>
@@ -279,10 +309,15 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
                     [
                       'Mean chunk latency',
                       stats.mean_chunk_latency_sec != null
-                        ? `${stats.mean_chunk_latency_sec.toFixed(2)} s`
+                        ? `${formatFixed(stats.mean_chunk_latency_sec, 2)}${NBSP}s`
                         : undefined,
                     ],
-                    ['Real-time factor', stats.realtime_factor?.toFixed(3)],
+                    [
+                      'Real-time factor',
+                      stats.realtime_factor != null
+                        ? formatFixed(stats.realtime_factor, 3)
+                        : undefined,
+                    ],
                   ] as const
                 )
                   .filter(([, value]) => value !== undefined)
@@ -304,7 +339,15 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
           </Card>
         ) : null}
         {failed ? (
-          <ErrorState title="The session failed" error={new Error(job?.error ?? 'Unknown error')} />
+          <ErrorState
+            title="The session failed"
+            error={
+              new Error(
+                job?.error ??
+                  `It stopped without reporting why. Check data/runs/${runId}/run.log on the server, then start a new session.`,
+              )
+            }
+          />
         ) : null}
       </div>
     </div>

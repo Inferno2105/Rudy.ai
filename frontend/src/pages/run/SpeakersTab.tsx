@@ -8,7 +8,7 @@ import { ErrorState, NotProduced } from '../../components/states'
 import { SpeakerChip } from '../../components/status'
 import { Card, CardBody, CardHeader } from '../../components/ui/card'
 import { LoadingBlock } from '../../components/ui/feedback'
-import { formatDuration, formatPercent } from '../../lib/format'
+import { formatCount, formatDuration, formatPercent } from '../../lib/format'
 import { speakerName, speakerPalette } from '../../lib/speakers'
 
 export function SpeakersTab({ run, stages }: { run: RunDetail; stages: StageInfo[] }) {
@@ -100,6 +100,7 @@ export function SpeakersTab({ run, stages }: { run: RunDetail; stages: StageInfo
         <CardHeader title="Per-speaker statistics" />
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
+            <caption className="sr-only">Speaking statistics per speaker</caption>
             <thead className="border-border text-muted border-b text-xs tracking-wide uppercase">
               <tr>
                 <th scope="col" className="px-5 py-3 font-medium">
@@ -131,8 +132,8 @@ export function SpeakersTab({ run, stages }: { run: RunDetail; stages: StageInfo
                   <td className="px-3 py-3 text-right">{formatDuration(row.speaking_time_sec)}</td>
                   <td className="px-3 py-3 text-right">{formatPercent(row.participation_pct)}</td>
                   <td className="px-3 py-3 text-right">{row.utterance_count}</td>
-                  <td className="px-3 py-3 text-right">{row.word_count.toLocaleString()}</td>
-                  <td className="px-5 py-3 text-right">{row.words_per_minute.toFixed(0)}</td>
+                  <td className="px-3 py-3 text-right">{formatCount(row.word_count)}</td>
+                  <td className="px-5 py-3 text-right">{formatCount(row.words_per_minute)}</td>
                 </tr>
               ))}
             </tbody>

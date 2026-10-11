@@ -1,34 +1,56 @@
 import { ChevronDown, Download } from 'lucide-react'
-import { useState } from 'react'
+import { useSearchParams } from 'react-router'
 
 import { useArtifact } from '../../api/queries'
 import type { ArtifactName, RunDetail } from '../../api/types'
 import { ErrorState } from '../../components/states'
-import { stageLabel } from '../../lib/stages'
 import { Button } from '../../components/ui/button'
 import { Card, CardHeader } from '../../components/ui/card'
 import { EmptyState, LoadingBlock } from '../../components/ui/feedback'
+import { useToast } from '../../components/ui/toast-context'
+import { stageLabel } from '../../lib/stages'
 import { cn } from '../../lib/utils'
 
-function ArtifactRow({ runId, name }: { runId: string; name: ArtifactName }) {
-  const [open, setOpen] = useState(false)
+/** Expanded panels live in the URL (`?open=a,b`), so the view can be linked. */
+const OPEN_PARAM = 'open'
+
+function ArtifactRow({
+  runId,
+  name,
+  open,
+  onToggle,
+}: {
+  runId: string
+  name: ArtifactName
+  open: boolean
+  onToggle: () => void
+}) {
   const artifact = useArtifact(runId, name, open)
+  const notify = useToast()
   const panelId = `artifact-${name}`
 
-  function download() {
-    // Already fetched with the token; save the same JSON rather than linking
-    // to the API (a plain link cannot carry the Authorization header).
-    const save = (data: unknown) => {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${runId}_${name}.json`
-      link.click()
-      URL.revokeObjectURL(url)
+  async function download() {
+    // Fetched with the token and saved from memory: a plain link to the API
+    // could not carry the Authorization header.
+    const data = artifact.data !== undefined ? artifact.data : (await artifact.refetch()).data
+    if (data === undefined) {
+      notify({
+        tone: 'danger',
+        title: `Could not download ${name}`,
+        description:
+          artifact.error instanceof Error
+            ? `${artifact.error.message}. Try again, or check that the server is running.`
+            : 'The server did not return it. Try again, or check that the server is running.',
+      })
+      return
     }
-    if (artifact.data !== undefined) save(artifact.data)
-    else void artifact.refetch().then((result) => result.data !== undefined && save(result.data))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${runId}_${name}.json`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -36,9 +58,9 @@ function ArtifactRow({ runId, name }: { runId: string; name: ArtifactName }) {
       <div className="flex items-center gap-3 px-5 py-3">
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={onToggle}
           aria-expanded={open}
-          aria-controls={panelId}
+          aria-controls={open ? panelId : undefined}
           className="hover:text-accent flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
         >
           <ChevronDown
@@ -50,20 +72,32 @@ function ArtifactRow({ runId, name }: { runId: string; name: ArtifactName }) {
             {name}
           </code>
         </button>
-        <Button size="sm" variant="ghost" onClick={download} aria-label={`Download ${name} JSON`}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void download()}
+          aria-label={`Download ${name} JSON`}
+        >
           <Download aria-hidden /> JSON
         </Button>
       </div>
       {open ? (
         <div id={panelId} className="px-5 pb-4">
           {artifact.isPending ? (
-            <LoadingBlock label={`Loading ${name}`} lines={3} />
+            <LoadingBlock label={`Loading ${name}…`} lines={3} />
           ) : artifact.isError ? (
-            <ErrorState error={artifact.error} />
+            <ErrorState error={artifact.error} onRetry={() => void artifact.refetch()} />
           ) : (
-            <pre className="bg-subtle text-fg max-h-96 overflow-auto rounded-lg p-4 font-mono text-xs leading-relaxed">
-              {JSON.stringify(artifact.data, null, 2)}
-            </pre>
+            // Focusable so the JSON can be scrolled with the keyboard.
+            <section
+              tabIndex={0}
+              aria-label={`${name} JSON`}
+              className="bg-subtle max-h-96 overflow-auto overscroll-contain rounded-lg"
+            >
+              <pre translate="no" className="text-fg p-4 font-mono text-xs leading-relaxed">
+                {JSON.stringify(artifact.data, null, 2)}
+              </pre>
+            </section>
           )}
         </div>
       ) : null}
@@ -72,6 +106,19 @@ function ArtifactRow({ runId, name }: { runId: string; name: ArtifactName }) {
 }
 
 export function ArtifactsTab({ run }: { run: RunDetail }) {
+  const [params, setParams] = useSearchParams()
+  const openNames = new Set((params.get(OPEN_PARAM) ?? '').split(',').filter(Boolean))
+
+  function toggle(name: string) {
+    const next = new Set(openNames)
+    if (next.has(name)) next.delete(name)
+    else next.add(name)
+    const updated = new URLSearchParams(params)
+    if (next.size) updated.set(OPEN_PARAM, [...next].join(','))
+    else updated.delete(OPEN_PARAM)
+    setParams(updated, { replace: true })
+  }
+
   return (
     <Card>
       <CardHeader
@@ -83,7 +130,13 @@ export function ArtifactsTab({ run }: { run: RunDetail }) {
       ) : (
         <ul className="divide-border divide-y">
           {run.artifacts.map((name) => (
-            <ArtifactRow key={name} runId={run.run_id} name={name as ArtifactName} />
+            <ArtifactRow
+              key={name}
+              runId={run.run_id}
+              name={name as ArtifactName}
+              open={openNames.has(name)}
+              onToggle={() => toggle(name)}
+            />
           ))}
         </ul>
       )}

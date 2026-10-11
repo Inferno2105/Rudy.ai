@@ -24,12 +24,33 @@ describe('new run', () => {
     expect(router.state.location.pathname).toBe(`/runs/${f.RUN_ID}`)
   })
 
-  it('validates the speaker count before submitting', async () => {
+  it('keeps an invalid speaker count from submitting and focuses the field', async () => {
+    let posted = false
+    server.use(
+      http.post(API('/api/runs/batch'), () => {
+        posted = true
+        return HttpResponse.json({ job_id: 'j', run_id: f.RUN_ID }, { status: 202 })
+      }),
+    )
     const { user } = renderApp('/new')
     await user.click(await screen.findByRole('radio', { name: /test_hindi\.wav/ }))
-    await user.type(screen.getByLabelText('Number of speakers'), '0')
+    const field = screen.getByLabelText('Number of speakers')
+    await user.type(field, '0')
     expect(screen.getByText('Enter a whole number from 1 to 20.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start processing' })).toBeDisabled()
+    // The button stays enabled; submitting explains and focuses instead.
+    await user.click(screen.getByRole('button', { name: 'Start processing' }))
+    expect(field).toHaveFocus()
+    expect(posted).toBe(false)
+  })
+
+  it('asks for a recording when none is chosen', async () => {
+    const { user } = renderApp('/new')
+    await screen.findByRole('radio', { name: /test_hindi\.wav/ })
+    await user.click(screen.getByRole('button', { name: 'Start processing' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose or upload a recording first.')
+    expect(screen.getByText('None selected')).toHaveFocus()
+    await user.click(screen.getByRole('radio', { name: /test_hindi\.wav/ }))
+    expect(screen.queryByText('Choose or upload a recording first.')).not.toBeInTheDocument()
   })
 
   it('uploads a recording and selects it', async () => {
@@ -84,6 +105,12 @@ describe('evaluation', () => {
   it('explains how to produce a report when there is none', async () => {
     renderApp('/evaluation')
     expect(await screen.findByText('No evaluation report yet')).toBeInTheDocument()
+  })
+
+  it('shows which commit and config each clip was scored with, not only on hover', async () => {
+    server.use(http.get(API('/api/eval/report'), () => HttpResponse.json(f.evalReport)))
+    renderApp('/evaluation')
+    expect(await screen.findByText(/commit abcdef1 · config 108acd72/)).toBeVisible()
   })
 
   it('shows aggregate metrics exactly as reported and links each clip to its run', async () => {

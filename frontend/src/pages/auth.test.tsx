@@ -20,7 +20,7 @@ describe('token gate', () => {
     await user.type(await screen.findByLabelText('API token'), 'wrong-token')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     expect(
-      await screen.findByText('That token was not accepted by the server.'),
+      await screen.findByText(/That token was not accepted by the server./),
     ).toBeInTheDocument()
     expect(getToken()).toBeNull()
   })

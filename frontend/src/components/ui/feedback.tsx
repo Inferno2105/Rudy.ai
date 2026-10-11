@@ -65,7 +65,7 @@ export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>
 /** Accessible loading placeholder for a whole region. */
 export function LoadingBlock({ label, lines = 4 }: { label: string; lines?: number }) {
   return (
-    <output aria-label={label} className="block space-y-3">
+    <output className="block space-y-3">
       {Array.from({ length: lines }, (_, i) => (
         <Skeleton key={i} className={cn('h-4', i % 3 === 2 ? 'w-2/3' : 'w-full')} />
       ))}

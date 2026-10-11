@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatClock, formatDuration, formatMetric, runTitle } from './format'
+import {
+  formatBytes,
+  formatClock,
+  formatDuration,
+  formatMetric,
+  NBSP,
+  plural,
+  runTitle,
+} from './format'
 import { textLang } from './language'
 import { speakerName, speakerPalette } from './speakers'
 import { buildStageRows } from './stages'
@@ -81,5 +89,18 @@ describe('buildStageRows', () => {
 
   it('lists only recorded stages for live runs', () => {
     expect(buildStageRows([ok('tagged')], { mode: 'live', active: true })).toHaveLength(1)
+  })
+})
+
+describe('number formatting', () => {
+  it('pluralizes counts', () => {
+    expect(plural(1, 'segment')).toBe('1 segment')
+    expect(plural(2, 'segment')).toBe('2 segments')
+    expect(plural(1200, 'word')).toBe('1,200 words')
+  })
+
+  it('keeps a size and its unit together with a non-breaking space', () => {
+    expect(formatBytes(1_097_694)).toBe(`1.0${NBSP}MB`)
+    expect(formatBytes(512)).toBe(`512${NBSP}B`)
   })
 })

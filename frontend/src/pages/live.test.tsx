@@ -87,6 +87,9 @@ describe('live page', () => {
     await user.type(screen.getByLabelText('Number of speakers'), '2')
     await user.click(screen.getByRole('button', { name: 'Start recording' }))
 
+    // The scrolling area is a named, keyboard-focusable region.
+    const region = await screen.findByRole('region', { name: 'Live transcript, scrollable' })
+    expect(region).toHaveAttribute('tabindex', '0')
     const transcript = await screen.findByRole('list', { name: 'Live transcript' })
     expect(await within(transcript).findByText('second chunk')).toBeInTheDocument()
     expect(within(transcript).getByText('pehla chunk')).toBeInTheDocument()

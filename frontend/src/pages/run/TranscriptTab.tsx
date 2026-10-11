@@ -1,11 +1,12 @@
 import { Search } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { isNotFound } from '../../api/client'
 import { useArtifact, useTranscript } from '../../api/queries'
 import type { RunDetail, Segment, StageInfo } from '../../api/types'
 import { AudioPlayer, type AudioPlayerHandle } from '../../components/AudioPlayer'
 import { ErrorState, NotProduced } from '../../components/states'
+import { LanguageLegend } from '../../components/status'
 import { Transcript } from '../../components/Transcript'
 import { Card, CardBody } from '../../components/ui/card'
 import { Callout, LoadingBlock } from '../../components/ui/feedback'
@@ -90,6 +91,18 @@ export function TranscriptTab({
 
   const hasRecording = run.mode === 'batch' && run.provenance.input != null
 
+  // The sticky player sits under the sticky header; widen the page's scroll
+  // padding to clear both, so a segment reached with Tab is never hidden.
+  useEffect(() => {
+    if (!hasRecording) return
+    const root = document.documentElement
+    const previous = root.style.scrollPaddingTop
+    root.style.scrollPaddingTop = '9rem'
+    return () => {
+      root.style.scrollPaddingTop = previous
+    }
+  }, [hasRecording])
+
   if (!segments) {
     if (transcript.isPending || (script === 'original' && original.isPending)) {
       return <LoadingBlock label="Loading transcript" lines={8} />
@@ -152,6 +165,7 @@ export function TranscriptTab({
       {source && SOURCE_LABEL[source] ? (
         <p className="text-muted text-xs">Showing {SOURCE_LABEL[source]}.</p>
       ) : null}
+      <LanguageLegend languages={segments.map((segment) => segment.language)} />
       {source === 'live' ? (
         <Callout tone="info">Live transcript: segments appear as each chunk is processed.</Callout>
       ) : null}

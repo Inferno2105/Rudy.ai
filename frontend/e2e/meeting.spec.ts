@@ -59,7 +59,7 @@ test('upload a recording, process it, and read the results', async ({ page }) =>
   // Progress streams in, then the run completes and the page reloads its data.
   await expect(page.getByRole('heading', { level: 1, name: 'e2e-standup.wav' })).toBeVisible()
   await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('Synthetic', { exact: true })).toBeVisible()
+  await expect(page.getByText(/^Synthetic/).first()).toBeVisible()
 
   const transcript = page.getByRole('list', { name: 'Transcript' })
   await expect(transcript.getByText('Let us review the release plan first')).toBeVisible()
@@ -87,6 +87,34 @@ test('upload a recording, process it, and read the results', async ({ page }) =>
 
   await openNav(page, 'Meetings')
   await expect(page.getByRole('link', { name: 'e2e-standup.wav' }).first()).toBeVisible()
+})
+
+test('a long transcript renders only the rows near the viewport', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(String(error)))
+  await signIn(page)
+  await openNav(page, 'New run')
+  await page.getByLabel('Recording file').setInputFiles({
+    name: 'long-meeting.wav',
+    mimeType: 'audio/wav',
+    buffer: silentWav(),
+  })
+  await expect(page.getByText(/long-meeting\.wav .*selected it\./)).toBeVisible()
+  await page.getByRole('button', { name: 'Start processing' }).click()
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 30_000 })
+
+  const transcript = page.getByRole('list', { name: 'Transcript' })
+  await expect(transcript.getByText('long meeting line 0', { exact: true })).toBeVisible()
+  const rendered = await transcript.getByRole('listitem').count()
+  expect(rendered).toBeGreaterThan(0)
+  expect(rendered).toBeLessThan(100) // of 400
+  await expect(transcript.getByRole('listitem').first()).toHaveAttribute('aria-setsize', '400')
+
+  // Scrolling to the end brings the last line into the DOM.
+  await page.keyboard.press('End')
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await expect(transcript.getByText('long meeting line 399', { exact: true })).toBeVisible()
+  expect(errors).toEqual([])
 })
 
 test('live session: segments stream in, then stop', async ({ page }) => {

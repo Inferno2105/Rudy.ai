@@ -26,6 +26,10 @@ import time
 from pathlib import Path
 
 STAGE_PAUSE_SEC = 0.25
+# A recording whose name contains this gets a long transcript, so the browser
+# test can exercise the transcript's virtualization with real layout.
+LONG_MEETING_MARKER = "long"
+LONG_MEETING_SEGMENTS = 400
 
 SEGMENTS = [
     {"start": 0.0, "end": 3.2, "speaker": "SPEAKER_00", "language": "Hindi",
@@ -63,6 +67,15 @@ def stub_batch(audio_path, opts):
     manifest.data_origin = "synthetic"
     manifest.save()
 
+    name = (manifest.provenance_block.get("input") or {}).get("name") or ""
+    hinglish = SEGMENTS
+    if LONG_MEETING_MARKER in name:
+        hinglish = [
+            {"start": i * 2.0, "end": i * 2.0 + 2.0, "speaker": f"SPEAKER_0{i % 2}",
+             "language": "English", "text": f"long meeting line {i}"}
+            for i in range(LONG_MEETING_SEGMENTS)
+        ]
+
     outputs = {
         "transcript": {"segments": SEGMENTS, "language": "hi"},
         "diarization": [{"start": s["start"], "end": s["end"], "speaker": s["speaker"]}
@@ -87,7 +100,7 @@ def stub_batch(audio_path, opts):
                      "duration_sec": 11.0, "duration_readable": "0m 11s", "num_speakers": 2,
                      "languages_used": ["Code-Mixed", "English", "Hindi"],
                      "total_word_count": 19, "segment_count": 3},
-        "hinglish": SEGMENTS,
+        "hinglish": hinglish,
         "summary": {"summary": "The team agreed to ship the release on Friday after testing.",
                     "highlights": ["Release planned for Friday"],
                     "key_decisions": ["Testing finishes tomorrow"]},

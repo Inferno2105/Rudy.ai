@@ -99,6 +99,7 @@ export function MeetingsPage() {
           />
           <Input
             id="meeting-search"
+            name="q"
             type="search"
             placeholder="Search by recording or run id…"
             value={query}
@@ -169,7 +170,7 @@ export function MeetingsPage() {
               }
             >
               Upload a recording or start a live session. Runs made from the command line appear
-              here after they finish (or use Rebuild index).
+              here after they finish, or after Rebuild index above.
             </EmptyState>
           )
         ) : (
@@ -249,10 +250,7 @@ export function MeetingsPage() {
                       <td className="px-3 py-3">
                         <OriginBadge origin={run.data_origin} />
                       </td>
-                      <td
-                        className="text-muted px-5 py-3 font-mono text-xs"
-                        title={run.config_hash ?? undefined}
-                      >
+                      <td translate="no" className="text-muted px-5 py-3 font-mono text-xs">
                         {shortHash(run.config_hash)}
                       </td>
                     </tr>

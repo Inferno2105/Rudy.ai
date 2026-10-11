@@ -155,3 +155,38 @@ describe('run detail', () => {
     expect(await screen.findByText('Meeting not found')).toBeInTheDocument()
   })
 })
+
+describe('run detail: guideline fixes', () => {
+  it('asks for a stage instead of disabling re-run on a completed run', async () => {
+    server.use(
+      http.get(API(`/api/runs/${f.RUN_ID}`), () =>
+        HttpResponse.json(f.runDetail({ status: 'completed' })),
+      ),
+    )
+    const { user } = renderApp(RUN_PATH)
+    await user.click(await screen.findByRole('button', { name: 'Re-run' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Resume' }))
+    expect(within(dialog).getByText('Choose a stage to re-run.')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Re-run from stage')).toHaveFocus()
+  })
+
+  it('keeps expanded artifacts in the URL', async () => {
+    const { user, router } = renderApp(`${RUN_PATH}?tab=artifacts`)
+    await user.click(await screen.findByRole('button', { name: /Language tagging/ }))
+    expect(router.state.location.search).toContain('open=tagged')
+    expect(await screen.findByRole('region', { name: 'tagged JSON' })).toBeInTheDocument()
+  })
+
+  it('opens artifacts named in the URL', async () => {
+    renderApp(`${RUN_PATH}?tab=artifacts&open=tagged`)
+    expect(await screen.findByRole('region', { name: 'tagged JSON' })).toBeInTheDocument()
+  })
+
+  it('shows a legend for the language codes', async () => {
+    renderApp(RUN_PATH)
+    await screen.findByRole('list', { name: 'Transcript' })
+    // The visible key, not the badges' screen-reader labels.
+    expect(screen.getByText('Code-mixed', { ignore: '.sr-only' })).toBeVisible()
+  })
+})

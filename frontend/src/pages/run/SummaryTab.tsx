@@ -92,6 +92,7 @@ function ActionItemsCard({ run, stages }: { run: RunDetail; stages: StageInfo[] 
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
+            <caption className="sr-only">Action items from this meeting</caption>
             <thead className="border-border text-muted border-b text-xs tracking-wide uppercase">
               <tr>
                 <th scope="col" className="px-5 py-3 font-medium">

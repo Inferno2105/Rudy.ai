@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 
 import { apiUrl } from '../api/client'
 import { useHealth } from '../api/queries'
@@ -30,12 +30,18 @@ function TokenForm() {
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+
+  function fail(message: string) {
+    setError(message)
+    input.current?.focus()
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     const token = value.trim()
     if (!token) {
-      setError('Enter the API token.')
+      fail('Enter the API token.')
       return
     }
     setChecking(true)
@@ -43,8 +49,11 @@ function TokenForm() {
     const result = await verifyToken(token)
     setChecking(false)
     if (result === 'ok') setToken(token, remember)
-    else if (result === 'rejected') setError('That token was not accepted by the server.')
-    else setError('The server could not be reached. Is `meeting-assistant serve` running?')
+    else if (result === 'rejected') {
+      fail(
+        "That token was not accepted by the server. Check the API_TOKEN line in the server's .env file.",
+      )
+    } else fail('The server could not be reached. Is `meeting-assistant serve` running?')
   }
 
   return (
@@ -69,8 +78,15 @@ function TokenForm() {
               <KeyRound className="text-accent size-4" aria-hidden /> Enter the API token
             </h2>
             <p className="text-muted mt-1 text-sm">
-              This server requires the token set as <code className="font-mono">API_TOKEN</code> in
-              its <code className="font-mono">.env</code> file.
+              This server requires the token set as{' '}
+              <code translate="no" className="font-mono">
+                API_TOKEN
+              </code>{' '}
+              in its{' '}
+              <code translate="no" className="font-mono">
+                .env
+              </code>{' '}
+              file.
             </p>
           </div>
 
@@ -84,7 +100,9 @@ function TokenForm() {
             {({ id, describedBy }) => (
               <div className="relative">
                 <Input
+                  ref={input}
                   id={id}
+                  name="api_token"
                   aria-describedby={describedBy}
                   aria-invalid={error ? true : undefined}
                   type={visible ? 'text' : 'password'}

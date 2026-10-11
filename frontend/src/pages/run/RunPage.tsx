@@ -14,7 +14,8 @@ import { Button } from '../../components/ui/button'
 import { Card, CardBody, CardHeader } from '../../components/ui/card'
 import { EmptyState, LoadingBlock } from '../../components/ui/feedback'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
-import { formatDateTime } from '../../lib/format'
+import { formatCount, formatDateTime } from '../../lib/format'
+import { STAGE_STATUS_TEXT, stageLabel } from '../../lib/stages'
 import { runSourceName } from '../../lib/runs'
 import { useDocumentTitle } from '../../lib/utils'
 import { ArtifactsTab } from './ArtifactsTab'
@@ -51,7 +52,7 @@ function MeetingFacts({ runId }: { runId: string }) {
       </div>
       <div className="flex gap-1.5">
         <dt className="sr-only">Words</dt>
-        <dd className="tabular-nums">{m.total_word_count.toLocaleString()} words</dd>
+        <dd className="tabular-nums">{formatCount(m.total_word_count)} words</dd>
       </div>
     </dl>
   )
@@ -98,6 +99,8 @@ export function RunPage() {
   const stages = streamed?.manifest?.stages ?? detail.stages
   const status = streamed?.manifest?.status ?? detail.status
   const job = streamed?.job ?? detail.job
+  // Stages are appended as they finish, so the last one is the latest change.
+  const latestStage = stages.at(-1)
 
   return (
     <>
@@ -149,8 +152,14 @@ export function RunPage() {
               ) : null
             }
           />
-          <CardBody aria-live="polite">
+          <CardBody>
             <StageProgress stages={stages} mode={detail.mode} active={active} />
+            {/* Announces only the newest change, not the whole list on every update. */}
+            <output className="sr-only">
+              {latestStage
+                ? `${stageLabel(latestStage.name)} ${STAGE_STATUS_TEXT[latestStage.status] ?? latestStage.status}`
+                : ''}
+            </output>
           </CardBody>
         </Card>
       ) : null}

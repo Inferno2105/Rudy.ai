@@ -67,11 +67,29 @@ function HealthIndicator() {
         ? { dot: 'bg-success', text: `Server online · v${health.data.version}` }
         : { dot: 'bg-warning', text: 'Setup incomplete' }
   const problems = health.data?.problems ?? []
+  const indicator = (
+    <>
+      <span className={cn('size-2 shrink-0 rounded-full', state.dot)} aria-hidden />
+      <span>{state.text}</span>
+    </>
+  )
+  if (problems.length === 0) {
+    return <output className="text-muted flex items-center gap-2 text-xs">{indicator}</output>
+  }
+  // Setup problems are listed in full, not hidden in a hover tooltip: they
+  // say exactly what to fix (e.g. a missing token), on any device.
   return (
-    <output className="text-muted flex items-center gap-2 text-xs">
-      <span className={cn('size-2 rounded-full', state.dot)} aria-hidden />
-      <span title={problems.length ? problems.join('\n') : undefined}>{state.text}</span>
-    </output>
+    <details className="text-muted text-xs">
+      <summary className="hover:text-fg flex cursor-pointer items-center gap-2">
+        {indicator}
+        <span className="sr-only">: show the problems</span>
+      </summary>
+      <ul className="mt-2 list-disc space-y-1 pl-5 break-words">
+        {problems.map((problem) => (
+          <li key={problem}>{problem}</li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
@@ -151,7 +169,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
       <a
         href="#main"
-        className="bg-accent text-accent-fg sr-only z-50 rounded-md px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+        className="bg-accent text-accent-fg sr-only z-50 rounded-md px-3 py-2 focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2"
       >
         Skip to content
       </a>

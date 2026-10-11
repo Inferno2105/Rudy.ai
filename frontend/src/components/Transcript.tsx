@@ -1,5 +1,6 @@
+import { useVirtualizer, useWindowVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import { Play } from 'lucide-react'
-import { memo, type ReactNode } from 'react'
+import { memo, useCallback, useState, type ReactNode } from 'react'
 
 import type { Segment } from '../api/types'
 import { formatClock } from '../lib/format'
@@ -7,6 +8,15 @@ import { textLang } from '../lib/language'
 import type { SpeakerPalette } from '../lib/speakers'
 import { cn } from '../lib/utils'
 import { LanguageBadge, SpeakerChip } from './status'
+
+/**
+ * Above this many segments only the rows near the viewport are rendered. A
+ * one-hour meeting runs to several hundred segments; below the threshold the
+ * plain list is kept, because it costs nothing and the browser's own
+ * find-in-page then sees every line.
+ */
+export const VIRTUALIZE_ABOVE = 150
+const ESTIMATED_ROW_PX = 76
 
 function highlight(text: string, query: string): ReactNode {
   if (!query) return text
@@ -27,31 +37,28 @@ function highlight(text: string, query: string): ReactNode {
   return parts
 }
 
-interface SegmentRowProps {
-  segment: Segment
+interface RowOptions {
   palette: SpeakerPalette
-  active: boolean
   query: string
   onSeek?: ((seconds: number) => void) | undefined
 }
 
-const SegmentRow = memo(function SegmentRow({
+const SegmentBody = memo(function SegmentBody({
   segment,
-  palette,
   active,
+  palette,
   query,
   onSeek,
-}: SegmentRowProps) {
+}: RowOptions & { segment: Segment; active: boolean }) {
   const style = palette(segment.speaker)
   const clock = formatClock(segment.start)
   return (
-    <li
+    <div
       className={cn(
-        'rounded-r-lg border-l-2 py-2 pr-3 pl-3 transition-colors [contain-intrinsic-size:auto_4.5rem] [content-visibility:auto]',
+        'rounded-r-lg border-l-2 py-2 pr-3 pl-3 transition-colors',
         style.rule,
         active ? 'bg-accent-soft' : 'hover:bg-subtle/60',
       )}
-      aria-current={active ? 'true' : undefined}
     >
       <div className="mb-1 flex flex-wrap items-center gap-2">
         {onSeek ? (
@@ -78,9 +85,101 @@ const SegmentRow = memo(function SegmentRow({
       >
         {highlight(segment.text, query)}
       </p>
-    </li>
+    </div>
   )
 })
+
+function isActive(segment: Segment, currentTime: number | null | undefined): boolean {
+  return currentTime != null && currentTime >= segment.start && currentTime < segment.end
+}
+
+interface ListProps extends RowOptions {
+  segments: Segment[]
+  currentTime?: number | null | undefined
+  label: string
+}
+
+function VirtualRows({
+  virtualizer,
+  offset,
+  segments,
+  currentTime,
+  label,
+  ...row
+}: ListProps & {
+  virtualizer: Virtualizer<Window, Element> | Virtualizer<HTMLElement, Element>
+  offset: number
+}) {
+  return (
+    <ol aria-label={label} className="relative" style={{ height: virtualizer.getTotalSize() }}>
+      {virtualizer.getVirtualItems().map((item) => {
+        const segment = segments[item.index]!
+        const active = isActive(segment, currentTime)
+        return (
+          <li
+            key={item.key}
+            ref={virtualizer.measureElement}
+            data-index={item.index}
+            aria-setsize={segments.length}
+            aria-posinset={item.index + 1}
+            aria-current={active ? 'true' : undefined}
+            className="absolute top-0 left-0 w-full pb-1.5"
+            style={{ transform: `translateY(${item.start - offset}px)` }}
+          >
+            <SegmentBody segment={segment} active={active} {...row} />
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** Rows scrolled by the page itself (the run page). */
+function WindowVirtualList(props: ListProps) {
+  // The list's distance from the top of the document, measured when it
+  // mounts (in a ref callback, never during render).
+  const [offset, setOffset] = useState(0)
+  const measure = useCallback((node: HTMLDivElement | null) => {
+    if (node) setOffset(node.getBoundingClientRect().top + window.scrollY)
+  }, [])
+  // The incompatible-library rule only matters under the React Compiler, which
+  // this project does not use; TanStack Virtual is used as documented.
+  // oxlint-disable-next-line react/incompatible-library
+  const virtualizer = useWindowVirtualizer({
+    count: props.segments.length,
+    estimateSize: () => ESTIMATED_ROW_PX,
+    overscan: 10,
+    // React 19: let React batch the virtualizer's updates instead of forcing
+    // synchronous re-renders from inside its measurement callbacks.
+    useFlushSync: false,
+    scrollMargin: offset,
+  })
+  return (
+    <div ref={measure}>
+      <VirtualRows {...props} virtualizer={virtualizer} offset={offset} />
+    </div>
+  )
+}
+
+/** Rows inside their own scrolling container (the live view). */
+function ElementVirtualList({
+  scrollElement,
+  ...props
+}: ListProps & { scrollElement: HTMLElement | null }) {
+  // The incompatible-library rule only matters under the React Compiler, which
+  // this project does not use; TanStack Virtual is used as documented.
+  // oxlint-disable-next-line react/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: props.segments.length,
+    getScrollElement: () => scrollElement,
+    estimateSize: () => ESTIMATED_ROW_PX,
+    overscan: 10,
+    // React 19: let React batch the virtualizer's updates instead of forcing
+    // synchronous re-renders from inside its measurement callbacks.
+    useFlushSync: false,
+  })
+  return <VirtualRows {...props} virtualizer={virtualizer} offset={0} />
+}
 
 export function Transcript({
   segments,
@@ -89,6 +188,7 @@ export function Transcript({
   query = '',
   onSeek,
   label = 'Transcript',
+  scrollElement,
 }: {
   segments: Segment[]
   palette: SpeakerPalette
@@ -96,19 +196,37 @@ export function Transcript({
   query?: string
   onSeek?: ((seconds: number) => void) | undefined
   label?: string
+  /** The scrolling container, when it is not the page (undefined = the page). */
+  scrollElement?: HTMLElement | null
 }) {
+  const props: ListProps = { segments, palette, currentTime, query, onSeek, label }
+  if (segments.length > VIRTUALIZE_ABOVE) {
+    return scrollElement === undefined ? (
+      <WindowVirtualList {...props} />
+    ) : (
+      <ElementVirtualList {...props} scrollElement={scrollElement} />
+    )
+  }
   return (
     <ol aria-label={label} className="space-y-1.5">
-      {segments.map((segment, index) => (
-        <SegmentRow
-          key={`${index}-${segment.start}`}
-          segment={segment}
-          palette={palette}
-          query={query}
-          onSeek={onSeek}
-          active={currentTime != null && currentTime >= segment.start && currentTime < segment.end}
-        />
-      ))}
+      {segments.map((segment, index) => {
+        const active = isActive(segment, currentTime)
+        return (
+          <li
+            key={`${index}-${segment.start}`}
+            aria-current={active ? 'true' : undefined}
+            className="[contain-intrinsic-size:auto_4.5rem] [content-visibility:auto]"
+          >
+            <SegmentBody
+              segment={segment}
+              active={active}
+              palette={palette}
+              query={query}
+              onSeek={onSeek}
+            />
+          </li>
+        )
+      })}
     </ol>
   )
 }

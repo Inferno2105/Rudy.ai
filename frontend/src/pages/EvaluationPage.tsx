@@ -121,6 +121,7 @@ function ClipTable({ clips }: { clips: ClipReport[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
+        <caption className="sr-only">Metrics for each evaluated clip</caption>
         <thead className="border-border text-muted border-b text-xs tracking-wide uppercase">
           <tr>
             <th scope="col" className="px-5 py-3 font-medium">
@@ -143,7 +144,7 @@ function ClipTable({ clips }: { clips: ClipReport[] }) {
         <tbody className="divide-border divide-y">
           {clips.map((clip) => (
             <tr key={clip.clip_id}>
-              <th scope="row" className="text-fg px-5 py-3 font-medium">
+              <th scope="row" translate="no" className="text-fg px-5 py-3 font-medium">
                 {clip.clip_id}
               </th>
               {columns.map((metric) => (
@@ -156,13 +157,21 @@ function ClipTable({ clips }: { clips: ClipReport[] }) {
               ))}
               <td className="px-5 py-3">
                 {clip.source ? (
-                  <Link
-                    to={`/runs/${encodeURIComponent(clip.source.run_id)}?tab=provenance`}
-                    className="text-accent font-mono text-xs hover:underline"
-                    title={`commit ${clip.source.git_commit ?? '?'} · config ${clip.source.config_hash ?? '?'}`}
-                  >
-                    {clip.source.run_id}
-                  </Link>
+                  <>
+                    <Link
+                      to={`/runs/${encodeURIComponent(clip.source.run_id)}?tab=provenance`}
+                      translate="no"
+                      className="text-accent font-mono text-xs hover:underline"
+                    >
+                      {clip.source.run_id}
+                    </Link>
+                    {/* Shown, not hidden in a tooltip: this is what makes the row's numbers traceable. */}
+                    <span translate="no" className="text-faint block font-mono text-xs">
+                      commit {shortHash(clip.source.git_commit)}
+                      {clip.source.git_dirty ? ' (dirty)' : ''} · config{' '}
+                      {shortHash(clip.source.config_hash)}
+                    </span>
+                  </>
                 ) : (
                   <span className="text-faint text-xs">not recorded</span>
                 )}

@@ -1,5 +1,5 @@
 import { RotateCcw } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 
 import { useResume } from '../../api/queries'
 import type { RunDetail } from '../../api/types'
@@ -19,12 +19,21 @@ export function ResumeDialog({ run }: { run: RunDetail }) {
   const [open, setOpen] = useState(false)
   const [forceStage, setForceStage] = useState('')
   const [allowMixed, setAllowMixed] = useState(false)
+  const [needsStage, setNeedsStage] = useState(false)
+  const stageSelect = useRef<HTMLSelectElement>(null)
   const resume = useResume(run.run_id)
 
   const incomplete = run.status !== 'completed'
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (!incomplete && !forceStage) {
+      // Nothing is missing, so a stage is required; say so rather than
+      // leaving a disabled button to be puzzled over.
+      setNeedsStage(true)
+      stageSelect.current?.focus()
+      return
+    }
     resume.mutate(
       { force_stage: forceStage || null, allow_mixed_config: allowMixed },
       { onSuccess: () => setOpen(false) },
@@ -60,13 +69,19 @@ export function ResumeDialog({ run }: { run: RunDetail }) {
                 ? `${stageLabel(forceStage)} and every later stage will be deleted and run again.`
                 : 'Leave empty to only run what is missing.'
             }
+            error={needsStage && !forceStage ? 'Choose a stage to re-run.' : undefined}
           >
             {({ id, describedBy }) => (
               <Select
+                ref={stageSelect}
                 id={id}
+                name="force_stage"
                 aria-describedby={describedBy}
                 value={forceStage}
-                onChange={(event) => setForceStage(event.target.value)}
+                onChange={(event) => {
+                  setForceStage(event.target.value)
+                  setNeedsStage(false)
+                }}
               >
                 <option value="">Only missing stages</option>
                 {BATCH_STAGE_ORDER.map((name) => (
@@ -98,7 +113,7 @@ export function ResumeDialog({ run }: { run: RunDetail }) {
             <Button
               type="submit"
               variant={forceStage ? 'danger' : 'primary'}
-              disabled={resume.isPending || (!incomplete && !forceStage)}
+              disabled={resume.isPending}
             >
               {resume.isPending ? 'Starting…' : forceStage ? 'Delete and re-run' : 'Resume'}
             </Button>

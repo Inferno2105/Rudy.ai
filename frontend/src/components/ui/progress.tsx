@@ -1,6 +1,11 @@
 import { cn } from '../../lib/utils'
 
-/** Native `<progress>`, styled: correct semantics for free, in every browser. */
+/**
+ * A progress bar. The semantics come from a native `<progress>` (announced by
+ * assistive technology); the visible bar is drawn separately and scaled with
+ * `transform`, which animates on the compositor instead of re-laying out the
+ * page on every update the way animating `width` would.
+ */
 export function Progress({
   value,
   max = 1,
@@ -12,18 +17,16 @@ export function Progress({
   label: string
   className?: string
 }) {
+  const fraction = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0
   return (
-    <progress
-      value={value}
-      max={max}
-      aria-label={label}
-      className={cn(
-        'bg-subtle block h-1.5 w-full appearance-none overflow-hidden rounded-full border-0',
-        '[&::-webkit-progress-bar]:bg-subtle [&::-webkit-progress-bar]:rounded-full',
-        '[&::-webkit-progress-value]:bg-accent [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:transition-[width]',
-        '[&::-moz-progress-bar]:bg-accent [&::-moz-progress-bar]:rounded-full',
-        className,
-      )}
-    />
+    <div className={cn('relative', className)}>
+      <progress value={value} max={max} aria-label={label} className="sr-only" />
+      <div aria-hidden className="bg-subtle h-1.5 w-full overflow-hidden rounded-full">
+        <div
+          className="bg-accent h-full w-full origin-left rounded-full transition-transform duration-300"
+          style={{ transform: `scaleX(${fraction})` }}
+        />
+      </div>
+    </div>
   )
 }

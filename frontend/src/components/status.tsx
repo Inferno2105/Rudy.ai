@@ -33,12 +33,11 @@ export function JobStateBadge({ state }: { state: Job['state'] }) {
 
 export function OriginBadge({ origin }: { origin: string }) {
   return origin === 'real_audio' ? (
-    <Badge tone="neutral" title="Produced from a real recording">
-      Real audio
-    </Badge>
+    <Badge tone="neutral">Real audio</Badge>
   ) : (
-    <Badge tone="danger" title="Not from a real recording: never use for reported results">
+    <Badge tone="danger">
       {origin === 'synthetic' ? 'Synthetic' : origin}
+      <span className="sr-only">: not from a real recording, never used for reported results</span>
     </Badge>
   )
 }
@@ -76,7 +75,6 @@ export function LanguageBadge({ language }: { language: string | null | undefine
   if (!style) return null
   return (
     <span
-      title={style.label}
       className={cn(
         'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold tracking-wide ring-1 ring-inset',
         style.className,
@@ -85,6 +83,25 @@ export function LanguageBadge({ language }: { language: string | null | undefine
       <span aria-hidden>{style.short}</span>
       <span className="sr-only">{style.label}</span>
     </span>
+  )
+}
+
+/** Visible key for the short language codes used on transcript segments. */
+export function LanguageLegend({ languages }: { languages: (string | null | undefined)[] }) {
+  const present = [...new Set(languages.filter((l): l is string => Boolean(l)))].sort()
+  if (present.length === 0) return null
+  return (
+    <p className="text-muted flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" aria-hidden>
+      {present.map((language) => {
+        const style = languageStyle(language)
+        return style ? (
+          <span key={language} className="inline-flex items-center gap-1.5">
+            <LanguageBadge language={language} />
+            <span>{style.label}</span>
+          </span>
+        ) : null
+      })}
+    </p>
   )
 }
 

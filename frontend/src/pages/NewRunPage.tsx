@@ -36,6 +36,9 @@ export function NewRunPage() {
   const [speakers, setSpeakers] = useState('')
   const [upload, setUpload] = useState<UploadState>({ kind: 'idle' })
   const [dragging, setDragging] = useState(false)
+  const [missingRecording, setMissingRecording] = useState(false)
+  const recordingStatus = useRef<HTMLParagraphElement>(null)
+  const speakersInput = useRef<HTMLInputElement>(null)
 
   async function handleFile(file: File) {
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
@@ -56,6 +59,7 @@ export function NewRunPage() {
       )
       setUpload({ kind: 'done', name: result.name, alreadyPresent: result.already_present })
       setSelected(result.name)
+      setMissingRecording(false)
       await queryClient.invalidateQueries({ queryKey: keys.audio })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -83,7 +87,17 @@ export function NewRunPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!selected || speakersInvalid) return
+    // The button stays enabled: an invalid submit explains itself and moves
+    // focus to what needs fixing, instead of a disabled button that doesn't.
+    if (!selected) {
+      setMissingRecording(true)
+      recordingStatus.current?.focus()
+      return
+    }
+    if (speakersInvalid) {
+      speakersInput.current?.focus()
+      return
+    }
     start.mutate(
       { audio: selected, num_speakers: speakerCount },
       { onSuccess: (accepted) => navigate(`/runs/${encodeURIComponent(accepted.run_id)}`) },
@@ -144,11 +158,11 @@ export function NewRunPage() {
                 />
               </div>
 
-              <div className="mt-4" aria-live="polite">
+              <div className="mt-4">
                 {upload.kind === 'uploading' ? (
                   <div>
                     <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-fg truncate">Uploading {upload.name}</span>
+                      <output className="text-fg truncate">Uploading {upload.name}</output>
                       <span className="text-muted tabular-nums">
                         {Math.round(upload.fraction * 100)}%
                       </span>
@@ -207,7 +221,10 @@ export function NewRunPage() {
                             name="recording"
                             value={file.name}
                             checked={selected === file.name}
-                            onChange={() => setSelected(file.name)}
+                            onChange={() => {
+                              setSelected(file.name)
+                              setMissingRecording(false)
+                            }}
                             className="accent-accent size-4"
                           />
                           <FileAudio className="text-muted size-4 shrink-0" aria-hidden />
@@ -236,22 +253,34 @@ export function NewRunPage() {
             <CardBody className="space-y-5">
               <div>
                 <p className="text-fg text-sm font-medium">Recording</p>
-                <p className="text-muted mt-1 truncate text-sm">{selected ?? 'None selected'}</p>
+                <p
+                  ref={recordingStatus}
+                  tabIndex={-1}
+                  className="text-muted mt-1 truncate text-sm outline-offset-2"
+                >
+                  {selected ?? 'None selected'}
+                </p>
+                {missingRecording ? (
+                  <p className="text-danger mt-1 text-xs" role="alert">
+                    Choose or upload a recording first.
+                  </p>
+                ) : null}
               </div>
               <Field
                 label="Number of speakers"
-                hint="Optional. If you know it, diarization is more accurate."
+                hint="Optional. Leave blank to detect automatically; if you know it, diarization is more accurate."
                 error={speakersInvalid ? 'Enter a whole number from 1 to 20.' : undefined}
               >
                 {({ id, describedBy }) => (
                   <Input
+                    ref={speakersInput}
                     id={id}
                     aria-describedby={describedBy}
                     aria-invalid={speakersInvalid || undefined}
                     name="num_speakers"
                     autoComplete="off"
                     inputMode="numeric"
-                    placeholder="Detect automatically"
+                    placeholder="e.g. 3…"
                     value={speakers}
                     onChange={(event) => setSpeakers(event.target.value)}
                   />
@@ -266,7 +295,7 @@ export function NewRunPage() {
                 type="submit"
                 variant="primary"
                 className="w-full"
-                disabled={!selected || speakersInvalid || uploading || start.isPending}
+                disabled={uploading || start.isPending}
               >
                 <Play aria-hidden /> {start.isPending ? 'Starting…' : 'Start processing'}
               </Button>
