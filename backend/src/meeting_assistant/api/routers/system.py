@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from meeting_assistant import __version__, accounts, config
 from meeting_assistant.api.auth import require_user
-from meeting_assistant.api.deps import get_db
+from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs
+from meeting_assistant.api.jobs import JobManager
 from meeting_assistant.api.schemas.eval import EvalReport
 from meeting_assistant.api.schemas.system import (
     AudioFile,
@@ -84,16 +85,69 @@ def _describe(path: Path) -> AudioFile:
 
 
 @router.get("/audio", response_model=list[AudioFile])
-def list_audio(user: accounts.User = Depends(require_user)) -> list[AudioFile]:
+def list_audio(
+    user: accounts.User = Depends(require_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> list[AudioFile]:
     """Recordings you have uploaded (never another account's)."""
+    from meeting_assistant.store.queries import count_runs_from_upload
+
     folder = user_audio_dir(user.uid)
     if not folder.is_dir():
         return []
-    return [
-        _describe(path)
-        for path in sorted(folder.iterdir())
-        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
-    ]
+    files = []
+    for path in sorted(folder.iterdir()):
+        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
+            described = _describe(path)
+            described.meetings = count_runs_from_upload(conn, owner=user.uid, name=path.name)
+            files.append(described)
+    return files
+
+
+def _being_processed(path: Path, jobs: JobManager, user: accounts.User) -> bool:
+    """Whether one of the user's queued or running jobs reads this recording."""
+    from meeting_assistant.audio.locate import locate_recording
+    from meeting_assistant.paths import RunPaths
+
+    target = path.resolve()
+    for job in jobs.list_jobs(owner=user.uid):
+        if job.state not in ("queued", "running", "stopping"):
+            continue
+        manifest_path = RunPaths(run_id=job.run_id, root=config.RUNS_DIR / job.run_id).manifest_path
+        if not manifest_path.is_file():
+            continue
+        recorded = (read_json(manifest_path).get("provenance") or {}).get("input") or {}
+        if locate_recording(recorded.get("path"), recorded.get("sha256")) == target:
+            return True
+    return False
+
+
+@router.delete(
+    "/audio/{name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {"description": "No such recording among yours"},
+        409: {"description": "A queued or running job is processing it"},
+    },
+)
+def delete_audio(
+    name: str,
+    jobs: JobManager = Depends(get_jobs),
+    user: accounts.User = Depends(require_user),
+) -> None:
+    """Delete one of your uploaded recordings.
+
+    Meetings already made from it keep their transcripts, summaries and
+    provenance (including the recording's sha256); only playback stops working.
+    """
+    path = get_audio_file(name, user)
+    if _being_processed(path, jobs, user):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A meeting is being processed from this recording. Delete it when that finishes.",
+        )
+    path.unlink()
+    log.info("Deleted upload %s of account %s", name, user.uid)
 
 
 def _sha256(path: Path) -> str:

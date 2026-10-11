@@ -291,6 +291,48 @@
         }
       }
     },
+    "/api/audio/{name}": {
+      "delete": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Delete Audio",
+        "description": "Delete one of your uploaded recordings.\n\nMeetings already made from it keep their transcripts, summaries and\nprovenance (including the recording's sha256); only playback stops working.",
+        "operationId": "delete_audio_api_audio__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such recording among yours"
+          },
+          "409": {
+            "description": "A queued or running job is processing it"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/uploads": {
       "post": {
         "tags": [
@@ -604,6 +646,43 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Delete Run",
+        "description": "Delete a meeting: its transcript, summary, every artifact and its index rows.\n\nThe uploaded recording it came from is kept (delete that separately).\nRefused while a job is working on it, and while the latest evaluation report\nscores it: a reported number must never point at a run that is gone.",
+        "operationId": "delete_run_api_runs__run_id__delete",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Still processing, or scored in the evaluation report"
           },
           "422": {
             "description": "Validation Error",
@@ -1503,6 +1582,12 @@
               }
             ],
             "title": "Duration Sec"
+          },
+          "meetings": {
+            "type": "integer",
+            "title": "Meetings",
+            "description": "Your meetings made from this recording (deleting it keeps their transcripts)",
+            "default": 0
           }
         },
         "type": "object",
@@ -3061,6 +3146,12 @@
               }
             ],
             "title": "Duration Sec"
+          },
+          "meetings": {
+            "type": "integer",
+            "title": "Meetings",
+            "description": "Your meetings made from this recording (deleting it keeps their transcripts)",
+            "default": 0
           },
           "sha256": {
             "type": "string",

@@ -1,17 +1,19 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { FileAudio, Play, UploadCloud } from 'lucide-react'
+import { FileAudio, Play, Trash2, UploadCloud } from 'lucide-react'
 import { useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 
 import { uploadAudio } from '../api/client'
-import { keys, useAudioFiles, useStartBatch } from '../api/queries'
+import { keys, useAudioFiles, useDeleteAudio, useStartBatch } from '../api/queries'
 import { PageHeader } from '../components/AppShell'
+import { ConfirmDelete } from '../components/ConfirmDelete'
 import { ErrorState } from '../components/states'
 import { Button } from '../components/ui/button'
 import { Card, CardBody, CardHeader } from '../components/ui/card'
 import { Callout, LoadingBlock } from '../components/ui/feedback'
 import { Field, Input } from '../components/ui/field'
 import { Progress } from '../components/ui/progress'
+import { useToast } from '../components/ui/toast-context'
 import { formatBytes, formatDuration } from '../lib/format'
 import { cn, useDocumentTitle } from '../lib/utils'
 
@@ -28,6 +30,8 @@ export function NewRunPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const files = useAudioFiles()
+  const deleteAudio = useDeleteAudio()
+  const notify = useToast()
   const start = useStartBatch()
   const input = useRef<HTMLInputElement>(null)
   const abort = useRef<AbortController | null>(null)
@@ -217,13 +221,14 @@ export function NewRunPage() {
                   <legend className="sr-only">Recording</legend>
                   <ul className="divide-border ring-border divide-y rounded-lg ring-1">
                     {files.data.map((file) => (
-                      <li key={file.name}>
-                        <label
-                          className={cn(
-                            'flex cursor-pointer items-center gap-3 px-4 py-3 text-sm',
-                            selected === file.name ? 'bg-accent-soft' : 'hover:bg-subtle/60',
-                          )}
-                        >
+                      <li
+                        key={file.name}
+                        className={cn(
+                          'flex items-center',
+                          selected === file.name ? 'bg-accent-soft' : 'hover:bg-subtle/60',
+                        )}
+                      >
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-4 text-sm">
                           <input
                             type="radio"
                             name="recording"
@@ -246,6 +251,32 @@ export function NewRunPage() {
                             {formatBytes(file.size_bytes)}
                           </span>
                         </label>
+                        <ConfirmDelete
+                          title={`Delete ${file.name}?`}
+                          confirmLabel="Delete recording"
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mx-2 shrink-0"
+                              aria-label={`Delete ${file.name}`}
+                            >
+                              <Trash2 aria-hidden />
+                            </Button>
+                          }
+                          onConfirm={async () => {
+                            await deleteAudio.mutateAsync(file.name)
+                            if (selected === file.name) setSelected(null)
+                            notify({ tone: 'success', title: `Deleted ${file.name}` })
+                          }}
+                        >
+                          <p>The recording is removed from the server. This cannot be undone.</p>
+                          <p>
+                            {file.meetings > 0
+                              ? `${file.meetings} of your meetings ${file.meetings === 1 ? 'was' : 'were'} made from it. ${file.meetings === 1 ? 'It keeps' : 'They keep'} the transcript, summary and provenance, but can no longer play the audio.`
+                              : 'No meeting has been made from it yet.'}
+                          </p>
+                        </ConfirmDelete>
                       </li>
                     ))}
                   </ul>

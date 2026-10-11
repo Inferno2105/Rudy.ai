@@ -181,6 +181,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/audio/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Audio
+         * @description Delete one of your uploaded recordings.
+         *
+         *     Meetings already made from it keep their transcripts, summaries and
+         *     provenance (including the recording's sha256); only playback stops working.
+         */
+        delete: operations["delete_audio_api_audio__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads": {
         parameters: {
             query?: never;
@@ -325,7 +348,15 @@ export interface paths {
         get: operations["get_run_api_runs__run_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Run
+         * @description Delete a meeting: its transcript, summary, every artifact and its index rows.
+         *
+         *     The uploaded recording it came from is kept (delete that separately).
+         *     Refused while a job is working on it, and while the latest evaluation report
+         *     scores it: a reported number must never point at a run that is gone.
+         */
+        delete: operations["delete_run_api_runs__run_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -683,6 +714,12 @@ export interface components {
             size_bytes: number;
             /** Duration Sec */
             duration_sec?: number | null;
+            /**
+             * Meetings
+             * @description Your meetings made from this recording (deleting it keeps their transcripts)
+             * @default 0
+             */
+            meetings: number;
         };
         /** AuthStatus */
         AuthStatus: {
@@ -1263,6 +1300,12 @@ export interface components {
             size_bytes: number;
             /** Duration Sec */
             duration_sec?: number | null;
+            /**
+             * Meetings
+             * @description Your meetings made from this recording (deleting it keeps their transcripts)
+             * @default 0
+             */
+            meetings: number;
             /** Sha256 */
             sha256: string;
             /** Already Present */
@@ -1628,6 +1671,49 @@ export interface operations {
             };
         };
     };
+    delete_audio_api_audio__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such recording among yours */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A queued or running job is processing it */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_audio_api_uploads_post: {
         parameters: {
             query?: never;
@@ -1820,6 +1906,42 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RunDetail"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_run_api_runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Still processing, or scored in the evaluation report */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

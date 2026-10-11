@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Health(BaseModel):
@@ -15,6 +15,10 @@ class AudioFile(BaseModel):
     name: str
     size_bytes: int
     duration_sec: float | None = None
+    meetings: int = Field(
+        default=0,
+        description="Your meetings made from this recording (deleting it keeps their transcripts)",
+    )
 
 
 class UploadResult(AudioFile):

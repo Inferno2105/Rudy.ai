@@ -285,6 +285,33 @@ export function useStopLive() {
   })
 }
 
+/** Delete a meeting (its run directory and index rows; the recording stays). */
+export function useDeleteRun() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (runId: string) => unwrap(api.DELETE('/api/runs/{run_id}', runPath(runId))),
+    onSuccess: (_, runId) => {
+      client.removeQueries({ queryKey: keys.run(runId) })
+      void client.invalidateQueries({ queryKey: keys.allRuns })
+      void client.invalidateQueries({ queryKey: keys.audio })
+      void client.invalidateQueries({ queryKey: ['search'] })
+    },
+  })
+}
+
+/** Delete one of your uploaded recordings (meetings made from it stay). */
+export function useDeleteAudio() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) =>
+      unwrap(api.DELETE('/api/audio/{name}', { params: { path: { name } } })),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.audio })
+      void client.invalidateQueries({ queryKey: ['run'] })
+    },
+  })
+}
+
 export function useRebuildIndex() {
   const client = useQueryClient()
   return useMutation({

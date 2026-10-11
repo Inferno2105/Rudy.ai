@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 
-from meeting_assistant import accounts
+from meeting_assistant import accounts, config
 from meeting_assistant.api.auth import require_user
 from meeting_assistant.api.deps import get_audio_file, get_db, get_jobs, get_run_paths
 from meeting_assistant.api.events import run_events
@@ -28,8 +28,11 @@ from meeting_assistant.api.schemas.runs import (
 )
 from meeting_assistant.errors import ArtifactError, ProvenanceError
 from meeting_assistant.io_utils import read_json
+from meeting_assistant.logging_setup import get_logger
 from meeting_assistant.paths import ARTIFACTS, RunPaths
 from meeting_assistant.store import queries
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(require_user)])
 
@@ -117,6 +120,60 @@ def get_run(
         artifacts=paths.existing_artifacts(),
         job=jobs.latest_for_run(paths.run_id),
     )
+
+
+def _cited_by_evaluation(run_id: str) -> str | None:
+    """When the latest evaluation report scores ``run_id``, when it was generated."""
+    report_path = config.EVAL_DIR / "reports" / "latest.json"
+    if not report_path.is_file():
+        return None
+    report = read_json(report_path)
+    for clip in report.get("clips", []):
+        if (clip.get("source") or {}).get("run_id") == run_id:
+            return str(report.get("generated_at") or "an earlier date")
+    return None
+
+
+@router.delete(
+    "/{run_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={409: {"description": "Still processing, or scored in the evaluation report"}},
+)
+def delete_run(
+    paths: RunPaths = Depends(get_run_paths),
+    jobs: JobManager = Depends(get_jobs),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> None:
+    """Delete a meeting: its transcript, summary, every artifact and its index rows.
+
+    The uploaded recording it came from is kept (delete that separately).
+    Refused while a job is working on it, and while the latest evaluation report
+    scores it: a reported number must never point at a run that is gone.
+    """
+    import shutil
+
+    from meeting_assistant.store.ingest import remove_run
+
+    if jobs.is_active(paths.run_id):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This meeting is still being processed; delete it afterwards."
+        )
+    cited = _cited_by_evaluation(paths.run_id)
+    if cited:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"The evaluation report generated {cited} scores this meeting, so deleting it would "
+            "leave a reported number without its run. Re-run `meeting-assistant eval` without "
+            "it first.",
+        )
+    try:
+        shutil.rmtree(paths.root)
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, f"Could not delete the meeting's files: {exc}"
+        ) from exc
+    remove_run(conn, paths.run_id)
+    log.info("Deleted run %s", paths.run_id)
 
 
 @router.post("/{run_id}/resume", response_model=JobAccepted, status_code=status.HTTP_202_ACCEPTED)

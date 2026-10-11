@@ -137,3 +137,27 @@ describe('evaluation', () => {
     expect(await screen.findByText('These results mix configurations')).toBeInTheDocument()
   })
 })
+
+describe('deleting a recording', () => {
+  it('says how many meetings used it, then deletes it', async () => {
+    let deleted = ''
+    let files = [{ name: 'test_hindi.wav', size_bytes: 1097694, duration_sec: 34.3, meetings: 2 }]
+    server.use(
+      http.get(API('/api/audio'), () => HttpResponse.json(files)),
+      http.delete(API('/api/audio/:name'), ({ params }) => {
+        deleted = String(params.name)
+        files = []
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { user } = renderApp('/new')
+    await user.click(await screen.findByRole('button', { name: 'Delete test_hindi.wav' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete test_hindi.wav?' })
+    expect(
+      within(dialog).getByText(/2 of your meetings were made from it\. They keep the transcript/),
+    ).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete recording' }))
+    expect(await screen.findByText('No recordings yet. Upload one above.')).toBeInTheDocument()
+    expect(deleted).toBe('test_hindi.wav')
+  })
+})

@@ -7,24 +7,27 @@ import {
   Languages,
   Mic,
   Sparkles,
+  Trash2,
   Type,
   Users,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { lazy, Suspense } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { isNotFound } from '../../api/client'
-import { useMetadata, useRun } from '../../api/queries'
+import { useDeleteRun, useMetadata, useRun } from '../../api/queries'
 import { isJobActive } from '../../api/types'
 import { useRunEvents } from '../../api/useRunEvents'
 import { PageHeader } from '../../components/AppShell'
+import { ConfirmDelete } from '../../components/ConfirmDelete'
 import { PipelineFlow } from '../../components/PipelineFlow'
 import { StageProgress } from '../../components/StageProgress'
 import { ErrorState } from '../../components/states'
 import { JobStateBadge, ModeLabel, OriginBadge, RunStatusBadge } from '../../components/status'
 import { Button } from '../../components/ui/button'
 import { Card, CardBody, CardHeader } from '../../components/ui/card'
+import { useToast } from '../../components/ui/toast-context'
 import { EmptyState, LoadingBlock } from '../../components/ui/feedback'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
 import { formatCount, formatDateTime } from '../../lib/format'
@@ -84,6 +87,9 @@ export function RunPage() {
   const tab: Tab = TABS.includes(requested as Tab) ? (requested as Tab) : 'transcript'
 
   const run = useRun(runId)
+  const deleteRun = useDeleteRun()
+  const navigate = useNavigate()
+  const notify = useToast()
   const active = isJobActive(run.data?.job)
   const events = useRunEvents(runId, active)
   useDocumentTitle(run.data ? runSourceName(run.data) : 'Meeting')
@@ -154,7 +160,34 @@ export function RunPage() {
           </span>
         }
         actions={
-          detail.mode === 'batch' && !active ? <ResumeDialog run={{ ...detail, stages }} /> : null
+          active ? null : (
+            <div className="flex flex-wrap gap-2">
+              {detail.mode === 'batch' ? <ResumeDialog run={{ ...detail, stages }} /> : null}
+              <ConfirmDelete
+                title="Delete this meeting?"
+                confirmLabel="Delete meeting"
+                trigger={
+                  <Button variant="ghost">
+                    <Trash2 aria-hidden /> Delete
+                  </Button>
+                }
+                onConfirm={async () => {
+                  await deleteRun.mutateAsync(detail.run_id)
+                  notify({ tone: 'success', title: `Deleted ${runSourceName(detail)}` })
+                  navigate('/meetings', { replace: true })
+                }}
+              >
+                <p>
+                  Its transcript, summary, action items, statistics and provenance are removed for
+                  good. This cannot be undone.
+                </p>
+                <p>
+                  The recording it was made from is kept; delete it from{' '}
+                  <span className="text-fg">New run</span> if you no longer need it.
+                </p>
+              </ConfirmDelete>
+            </div>
+          )
         }
       >
         <MeetingFacts runId={runId} />

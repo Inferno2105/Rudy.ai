@@ -30,6 +30,11 @@ def _delete_existing(conn: sqlite3.Connection, run_id: str) -> None:
     conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
 
 
+def remove_run(conn: sqlite3.Connection, run_id: str) -> None:
+    """Drop every row of ``run_id`` from the index (after its directory is deleted)."""
+    _delete_existing(conn, run_id)
+
+
 def ingest_run(conn: sqlite3.Connection, run: RunPaths) -> bool:
     """Ingest one run's manifest and artifacts.
 

@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
@@ -220,5 +220,42 @@ describe('pipeline view', () => {
     const stages = screen.getByRole('list', { name: 'Pipeline stages' })
     expect(within(stages).getByText(/Transcribe/)).toBeInTheDocument()
     expect(within(stages).getByText(/\(Summary\): failed/)).toBeInTheDocument()
+  })
+})
+
+describe('deleting a meeting', () => {
+  it('asks first, then deletes and returns to the meeting list', async () => {
+    let deleted = ''
+    server.use(
+      http.delete(API('/api/runs/:runId'), ({ params }) => {
+        deleted = String(params.runId)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { user, router } = renderApp(RUN_PATH)
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this meeting?' })
+    expect(within(dialog).getByText(/cannot be undone/)).toBeInTheDocument()
+    expect(deleted).toBe('')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete meeting' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/meetings'))
+    expect(deleted).toBe(f.RUN_ID)
+  })
+
+  it('shows why the server refused, and keeps the dialog open', async () => {
+    const reason =
+      'The evaluation report generated 2026-10-11 scores this meeting, so deleting it would leave a reported number without its run.'
+    server.use(
+      http.delete(API('/api/runs/:runId'), () =>
+        HttpResponse.json({ detail: reason }, { status: 409 }),
+      ),
+    )
+    const { user, router } = renderApp(RUN_PATH)
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete meeting' }))
+    expect(await within(dialog).findByText(reason)).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(RUN_PATH)
   })
 })

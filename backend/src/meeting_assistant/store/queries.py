@@ -105,10 +105,14 @@ def count_runs(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
 
 
+def _escape_like(text: str) -> str:
+    """``text`` for a LIKE pattern with a backslash ESCAPE: wildcards taken literally."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _like_pattern(text: str) -> str:
     """``text`` as a LIKE substring pattern, with its wildcards taken literally."""
-    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
+    return f"%{_escape_like(text)}%"
 
 
 def search_segments(
@@ -135,3 +139,16 @@ def search_segments(
     ).fetchall()
     return [dict(row) for row in rows]
 
+
+def count_runs_from_upload(conn: sqlite3.Connection, *, owner: str, name: str) -> int:
+    """How many of ``owner``'s runs were made from their upload called ``name``.
+
+    Matches the recorded path's ending (``.../users/<owner>/<name>``) with either
+    separator, so runs processed natively and in Docker both count.
+    """
+    tail = f"/users/{owner}/{name}"
+    return conn.execute(
+        "SELECT COUNT(*) FROM runs WHERE owner = ? "
+        "AND replace(audio_path, '\\', '/') LIKE ? ESCAPE '\\'",
+        (owner, "%" + _escape_like(tail)),
+    ).fetchone()[0]
