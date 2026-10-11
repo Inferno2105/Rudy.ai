@@ -58,6 +58,9 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
+    // Never inline fonts as data: URLs: the server's CSP allows fonts from
+    // 'self' only, and blocked them (small subsets fell under the 4 kB limit).
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
   },
   test: {
     environment: 'jsdom',

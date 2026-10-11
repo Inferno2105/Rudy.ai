@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 
 import type { RunDetail } from '../../api/types'
+import { PipelineFlow } from '../../components/PipelineFlow'
+import { StageProgress } from '../../components/StageProgress'
 import { StageIcon } from '../../components/status'
 import { stageLabel } from '../../lib/stages'
 import { Badge } from '../../components/ui/badge'
@@ -101,6 +103,23 @@ export function ProvenanceTab({ run }: { run: RunDetail }) {
           {run.consistency.executions.length > 1 ? ' and one clean commit' : ''}.
         </Callout>
       )}
+
+      {run.mode === 'batch' ? (
+        <Card>
+          <CardHeader
+            title="How this meeting was processed"
+            description="Each stage, the model or method behind it, and how long it took."
+          />
+          <CardBody>
+            <div className="hidden lg:block">
+              <PipelineFlow run={run} stages={run.stages} active={false} />
+            </div>
+            <div className="lg:hidden">
+              <StageProgress stages={run.stages} mode={run.mode} active={false} />
+            </div>
+          </CardBody>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader title="What produced this run" />

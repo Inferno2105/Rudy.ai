@@ -61,6 +61,20 @@ than leaving them testing a contract the server no longer has.
   the signed-in account. Because the session cookie is shared by all tabs,
   `watchSession` (in `routes.tsx`) resets every cached query the moment the
   signed-in account changes, so a tab never shows the previous account's data.
+- **Player and karaoke transcript.** `MeetingPlayer` draws the recording as a
+  waveform coloured by speaker on a canvas (peaks from
+  `GET /api/runs/{id}/waveform`, a few kB instead of the whole file) and
+  repaints the playhead every frame without re-rendering React; a native range
+  input on top is the actual control. Shortcuts: Space/K play, J/L ±10 s. The
+  line being played fills in word by word. Whisper times segments, not words,
+  so word timing is estimated from each word's position in the line. The view
+  follows playback until the reader scrolls. `?t=<seconds>` opens a run at a
+  moment.
+- **Pipeline view.** `PipelineFlow` draws the batch stages as their real
+  dependency graph (live while processing, and in the Provenance tab).
+- **Search.** Ctrl+K (or the header button) opens a command palette over pages,
+  meetings and every transcript line (`GET /api/runs/search`, scoped to the
+  signed-in account); choosing a line opens that meeting at that moment.
 - **Progress over SSE.** `src/api/sse.ts` reads the `/events` stream with
   `fetch` and parses it itself, for an explicit abort on unmount, a chosen
   backoff and a clean stop on `end`. Segments are spliced by their

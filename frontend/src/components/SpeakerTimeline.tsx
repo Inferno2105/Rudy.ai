@@ -112,7 +112,13 @@ export function SpeakerTimeline({
   )
 }
 
-function SpeakerLegend({ segments, palette }: { segments: Segment[]; palette: SpeakerPalette }) {
+export function SpeakerLegend({
+  segments,
+  palette,
+}: {
+  segments: Segment[]
+  palette: SpeakerPalette
+}) {
   const shares = useMemo(() => {
     const totals = new Map<string, number>()
     for (const segment of segments) {

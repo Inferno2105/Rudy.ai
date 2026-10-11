@@ -84,13 +84,23 @@ test('upload a recording, process it, and read the results', async ({ page }) =>
   await page.getByText('Original script').click()
   await expect(transcript.getByText('नमस्ते सबको, मीटिंग शुरू करते हैं')).toBeVisible()
 
-  // The recording is served directly, with Range support so the player can seek.
-  const player = page.getByLabel('Meeting recording')
-  await expect(player).toHaveAttribute('src', /\/api\/runs\/[^/]+\/audio$/)
-  const audio = await page.request.get((await player.getAttribute('src'))!, {
-    headers: { Range: 'bytes=0-9' },
-  })
+  // The player: its waveform comes from the real recording, and the recording
+  // is served with Range support so it can seek.
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+  await expect(page.getByRole('slider', { name: /Recording position/ })).toBeVisible()
+  const src = await page.locator('audio').getAttribute('src')
+  expect(src).toMatch(/\/api\/runs\/[^/]+\/audio$/)
+  const audio = await page.request.get(src!, { headers: { Range: 'bytes=0-9' } })
   expect(audio.status()).toBe(206)
+  const wave = await page.request.get(src!.replace(/audio$/, 'waveform?bins=50'))
+  expect((await wave.json()).peaks).toHaveLength(50)
+
+  // Clicking a timestamp plays from there and marks that line as current
+  // (this test's recording is 1 s long, so the first line is the one to try).
+  await transcript.getByRole('button', { name: 'Play from 0:00' }).click()
+  await expect(transcript.locator('li[aria-current="true"]')).toContainText(
+    'नमस्ते सबको, मीटिंग शुरू करते हैं',
+  )
 
   await page.getByRole('tab', { name: /Summary/ }).click()
   await expect(page.getByText('The team agreed to ship the release on Friday')).toBeVisible()

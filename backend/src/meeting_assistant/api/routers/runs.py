@@ -20,9 +20,11 @@ from meeting_assistant.api.schemas.runs import (
     MetadataResponse,
     RunDetail,
     RunSummary,
+    SearchHit,
     SpeakersResponse,
     SummaryResponse,
     TranscriptResponse,
+    WaveformResponse,
 )
 from meeting_assistant.errors import ArtifactError, ProvenanceError
 from meeting_assistant.io_utils import read_json
@@ -62,6 +64,17 @@ def list_runs(
     return queries.list_runs(
         conn, limit=limit, offset=offset, status=status_filter, mode=mode, owner=user.uid
     )
+
+
+@router.get("/search", response_model=list[SearchHit])
+def search(
+    q: str = Query(min_length=1, max_length=200, description="Text to find"),
+    limit: int = Query(default=20, ge=1, le=100),
+    conn: sqlite3.Connection = Depends(get_db),
+    user: accounts.User = Depends(require_user),
+) -> list[dict[str, Any]]:
+    """Transcript lines across all your meetings that contain ``q``."""
+    return queries.search_segments(conn, q, owner=user.uid, limit=limit)
 
 
 @router.post("/batch", response_model=JobAccepted, status_code=status.HTTP_202_ACCEPTED)
@@ -214,6 +227,25 @@ def get_run_audio(paths: RunPaths = Depends(get_run_paths)) -> FileResponse:
     Supports HTTP Range requests, so the player can seek.
     """
     return FileResponse(_source_audio(paths))
+
+
+@router.get("/{run_id}/waveform", response_model=WaveformResponse)
+def get_run_waveform(
+    bins: int = Query(default=600, ge=32, le=2000),
+    paths: RunPaths = Depends(get_run_paths),
+) -> WaveformResponse:
+    """The recording's loudness envelope in ``bins`` equal slices, for the
+    player's waveform -- a few kilobytes instead of the whole recording."""
+    from meeting_assistant.audio.waveform import waveform
+
+    source = _source_audio(paths)
+    try:
+        duration, peaks = waveform(source, bins)
+    except Exception as exc:  # noqa: BLE001 -- an undecodable file has no waveform, not a 500
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Could not read the recording: {exc}"
+        ) from exc
+    return WaveformResponse(duration_sec=duration, peaks=peaks)
 
 
 @router.get(

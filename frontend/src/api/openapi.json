@@ -470,6 +470,69 @@
         }
       }
     },
+    "/api/runs/search": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Search",
+        "description": "Transcript lines across all your meetings that contain ``q``.",
+        "operationId": "search_api_runs_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Text to find",
+              "title": "Q"
+            },
+            "description": "Text to find"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchHit"
+                  },
+                  "title": "Response Search Api Runs Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runs/batch": {
       "post": {
         "tags": [
@@ -905,6 +968,61 @@
         "responses": {
           "200": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/waveform": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Run Waveform",
+        "description": "The recording's loudness envelope in ``bins`` equal slices, for the\nplayer's waveform -- a few kilobytes instead of the whole recording.",
+        "operationId": "get_run_waveform_api_runs__run_id__waveform_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "bins",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 32,
+              "default": 600,
+              "title": "Bins"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaveformResponse"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -2531,6 +2649,102 @@
         "title": "RunSummary",
         "description": "One row of the run list, from the SQLite index."
       },
+      "SearchHit": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "idx": {
+            "type": "integer",
+            "title": "Idx",
+            "description": "Position of the segment in the run's transcript"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "audio_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "idx",
+          "text",
+          "mode"
+        ],
+        "title": "SearchHit",
+        "description": "One transcript line that matches a search, from the index."
+      },
       "Segment": {
         "properties": {
           "start": {
@@ -2923,6 +3137,30 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WaveformResponse": {
+        "properties": {
+          "duration_sec": {
+            "type": "number",
+            "title": "Duration Sec",
+            "description": "Length of the recording"
+          },
+          "peaks": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Peaks",
+            "description": "RMS loudness per equal time slice, 0..1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "duration_sec",
+          "peaks"
+        ],
+        "title": "WaveformResponse",
+        "description": "The recording's loudness envelope, for drawing its waveform."
       },
       "WordErrors": {
         "properties": {

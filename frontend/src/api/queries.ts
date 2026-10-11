@@ -135,6 +135,35 @@ export function useTranscript(runId: string) {
   })
 }
 
+/** The recording's loudness envelope, for the player's waveform. */
+export function useWaveform(runId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.runPart(runId, 'waveform'),
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/api/runs/{run_id}/waveform', {
+          params: { path: { run_id: runId }, query: { bins: 480 } },
+          signal,
+        }),
+      ),
+    enabled,
+    staleTime: Infinity, // a recording never changes under its name
+  })
+}
+
+/** Transcript lines across all of your meetings containing ``query``. */
+export function useSearch(query: string) {
+  const q = query.trim()
+  return useQuery({
+    queryKey: ['search', q],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/api/runs/search', { params: { query: { q, limit: 20 } }, signal })),
+    enabled: q.length >= 2,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  })
+}
+
 export function useSummary(runId: string) {
   return useQuery({
     queryKey: keys.runPart(runId, 'summary'),

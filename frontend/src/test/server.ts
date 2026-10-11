@@ -15,10 +15,14 @@ export const defaultHandlers = [
   ),
   http.get(API('/api/jobs/current'), () => HttpResponse.json(null)),
   http.get(API('/api/runs'), () => HttpResponse.json(f.runSummaries)),
+  http.get(API('/api/runs/search'), () => HttpResponse.json(f.searchHits)),
   http.get(API('/api/runs/:runId'), ({ params }) =>
     params.runId === f.RUN_ID ? HttpResponse.json(f.runDetail()) : notFound('Run not found'),
   ),
   http.get(API('/api/runs/:runId/transcript'), () => HttpResponse.json(f.transcript)),
+  http.get(API('/api/runs/:runId/waveform'), () =>
+    HttpResponse.json({ duration_sec: 12, peaks: [0.2, 0.9, 0.5, 1, 0.1, 0.4] }),
+  ),
   http.get(API('/api/runs/:runId/summary'), () => notFound('Run has no summary artifact (yet)')),
   http.get(API('/api/runs/:runId/action-items'), () =>
     notFound('Run has no action_items artifact (yet)'),

@@ -49,6 +49,9 @@ window.matchMedia ??= (query: string) =>
     dispatchEvent: () => false,
   }) as MediaQueryList
 Element.prototype.scrollIntoView ??= () => {}
+// No canvas in jsdom: the waveform simply does not paint.
+HTMLCanvasElement.prototype.getContext = (() =>
+  null) as typeof HTMLCanvasElement.prototype.getContext
 HTMLMediaElement.prototype.play = () => Promise.resolve()
 HTMLMediaElement.prototype.pause = () => {}
 HTMLMediaElement.prototype.load = () => {}

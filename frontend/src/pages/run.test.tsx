@@ -47,10 +47,30 @@ describe('run detail', () => {
   })
 
   it('offers seeking for batch runs with a recording', async () => {
-    renderApp(RUN_PATH)
+    const { container } = renderApp(RUN_PATH)
     expect(await screen.findByRole('button', { name: 'Play from 0:03' })).toBeInTheDocument()
-    const player = await screen.findByLabelText('Meeting recording')
-    expect(player.getAttribute('src')).toMatch(/\/api\/runs\/[^/]+\/audio$/)
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: /Recording position/ })).toBeInTheDocument()
+    expect(container.querySelector('audio')?.getAttribute('src')).toMatch(
+      /\/api\/runs\/[^/]+\/audio$/,
+    )
+  })
+
+  it('cycles the playback speed', async () => {
+    const { user } = renderApp(RUN_PATH)
+    const speed = await screen.findByRole('button', { name: /Playback speed 1×/ })
+    await user.click(speed)
+    expect(screen.getByRole('button', { name: /Playback speed 1.25×/ })).toBeInTheDocument()
+  })
+
+  it('opens at a linked moment with that line current and filling in', async () => {
+    renderApp(`${RUN_PATH}?t=4`)
+    const current = await screen.findByRole('listitem', { current: true })
+    expect(current).toHaveTextContent('Let us review the release plan first')
+    expect(screen.getByRole('slider', { name: /Recording position/ })).toHaveAttribute(
+      'aria-valuetext',
+      expect.stringMatching(/^0:04 of /),
+    )
   })
 
   it('explains a missing summary with the stage error instead of showing nothing', async () => {
@@ -188,5 +208,17 @@ describe('run detail: guideline fixes', () => {
     await screen.findByRole('list', { name: 'Transcript' })
     // The visible key, not the badges' screen-reader labels.
     expect(screen.getByText('Code-mixed', { ignore: '.sr-only' })).toBeVisible()
+  })
+})
+
+describe('pipeline view', () => {
+  it('shows how the meeting was processed, stage by stage', async () => {
+    renderApp(`${RUN_PATH}?tab=provenance`)
+    expect(
+      await screen.findByRole('heading', { name: 'How this meeting was processed' }),
+    ).toBeInTheDocument()
+    const stages = screen.getByRole('list', { name: 'Pipeline stages' })
+    expect(within(stages).getByText(/Transcribe/)).toBeInTheDocument()
+    expect(within(stages).getByText(/\(Summary\): failed/)).toBeInTheDocument()
   })
 })

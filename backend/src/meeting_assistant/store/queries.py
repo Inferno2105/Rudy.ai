@@ -103,3 +103,35 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any] | None:
 
 def count_runs(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+
+
+def _like_pattern(text: str) -> str:
+    """``text`` as a LIKE substring pattern, with its wildcards taken literally."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def search_segments(
+    conn: sqlite3.Connection, query: str, *, owner: str, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Transcript lines of ``owner``'s runs containing ``query``, newest runs first.
+
+    A plain substring match (ASCII case-insensitive), over the same segments
+    the run list's overview reads -- the most processed transcript of each run.
+    """
+    query = query.strip()
+    if not query:
+        return []
+    rows = conn.execute(
+        """
+        SELECT s.run_id, s.idx, s.start, s.end, s.speaker, s.language, s.text,
+               r.mode, r.created_at, r.audio_path
+        FROM segments AS s JOIN runs AS r ON r.run_id = s.run_id
+        WHERE r.owner = ? AND s.text LIKE ? ESCAPE '\\'
+        ORDER BY r.created_at DESC, s.idx
+        LIMIT ?
+        """,
+        (owner, _like_pattern(query), limit),
+    ).fetchall()
+    return [dict(row) for row in rows]
+

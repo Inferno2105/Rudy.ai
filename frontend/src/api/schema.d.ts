@@ -271,6 +271,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Transcript lines across all your meetings that contain ``q``.
+         */
+        get: operations["search_api_runs_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/batch": {
         parameters: {
             query?: never;
@@ -458,6 +478,27 @@ export interface paths {
          *     Supports HTTP Range requests, so the player can seek.
          */
         get: operations["get_run_audio_api_runs__run_id__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/waveform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run Waveform
+         * @description The recording's loudness envelope in ``bins`` equal slices, for the
+         *     player's waveform -- a few kilobytes instead of the whole recording.
+         */
+        get: operations["get_run_waveform_api_runs__run_id__waveform_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1042,6 +1083,35 @@ export interface components {
             };
         };
         /**
+         * SearchHit
+         * @description One transcript line that matches a search, from the index.
+         */
+        SearchHit: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Idx
+             * @description Position of the segment in the run's transcript
+             */
+            idx: number;
+            /** Start */
+            start?: number | null;
+            /** End */
+            end?: number | null;
+            /** Speaker */
+            speaker?: string | null;
+            /** Language */
+            language?: string | null;
+            /** Text */
+            text: string;
+            /** Mode */
+            mode: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Audio Path */
+            audio_path?: string | null;
+        };
+        /**
          * Segment
          * @description A transcript segment. Fields beyond the core five depend on which
          *     stages ran (e.g. live runs add ``chunk`` and speaker-resolution fields).
@@ -1217,6 +1287,22 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * WaveformResponse
+         * @description The recording's loudness envelope, for drawing its waveform.
+         */
+        WaveformResponse: {
+            /**
+             * Duration Sec
+             * @description Length of the recording
+             */
+            duration_sec: number;
+            /**
+             * Peaks
+             * @description RMS loudness per equal time slice, 0..1
+             */
+            peaks: number[];
         };
         /** WordErrors */
         WordErrors: {
@@ -1649,6 +1735,39 @@ export interface operations {
             };
         };
     };
+    search_api_runs_search_get: {
+        parameters: {
+            query: {
+                /** @description Text to find */
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchHit"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     start_batch_api_runs_batch_post: {
         parameters: {
             query?: never;
@@ -1952,6 +2071,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_waveform_api_runs__run_id__waveform_get: {
+        parameters: {
+            query?: {
+                bins?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaveformResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

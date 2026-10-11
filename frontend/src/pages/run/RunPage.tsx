@@ -19,6 +19,7 @@ import { useMetadata, useRun } from '../../api/queries'
 import { isJobActive } from '../../api/types'
 import { useRunEvents } from '../../api/useRunEvents'
 import { PageHeader } from '../../components/AppShell'
+import { PipelineFlow } from '../../components/PipelineFlow'
 import { StageProgress } from '../../components/StageProgress'
 import { ErrorState } from '../../components/states'
 import { JobStateBadge, ModeLabel, OriginBadge, RunStatusBadge } from '../../components/status'
@@ -180,7 +181,18 @@ export function RunPage() {
             }
           />
           <CardBody>
-            <StageProgress stages={stages} mode={detail.mode} active={active} />
+            {detail.mode === 'batch' ? (
+              <>
+                <div className="hidden lg:block">
+                  <PipelineFlow run={detail} stages={stages} active={active} />
+                </div>
+                <div className="lg:hidden">
+                  <StageProgress stages={stages} mode={detail.mode} active={active} />
+                </div>
+              </>
+            ) : (
+              <StageProgress stages={stages} mode={detail.mode} active={active} />
+            )}
             {/* Announces only the newest change, not the whole list on every update. */}
             <output className="sr-only">
               {latestStage
@@ -219,6 +231,7 @@ export function RunPage() {
         </TabsList>
         <TabsContent value="transcript">
           <TranscriptTab
+            key={params.get('t') ?? ''}
             run={detail}
             stages={stages}
             liveSegments={active ? events.segments : null}

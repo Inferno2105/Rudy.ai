@@ -155,3 +155,26 @@ class MetadataResponse(BaseModel):
     languages_used: list[str]
     total_word_count: int
     segment_count: int
+
+
+class WaveformResponse(BaseModel):
+    """The recording's loudness envelope, for drawing its waveform."""
+
+    duration_sec: float = Field(description="Length of the recording")
+    peaks: list[float] = Field(description="RMS loudness per equal time slice, 0..1")
+
+
+class SearchHit(BaseModel):
+    """One transcript line that matches a search, from the index."""
+
+    run_id: str
+    idx: int = Field(description="Position of the segment in the run's transcript")
+    start: float | None = None
+    end: float | None = None
+    speaker: str | None = None
+    language: str | None = None
+    text: str
+    mode: str
+    created_at: str | None = None
+    audio_path: str | None = None
+

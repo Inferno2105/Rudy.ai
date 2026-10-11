@@ -1,4 +1,15 @@
-import { BarChart3, ListMusic, Menu, Mic, Monitor, Moon, Sun, Upload, X } from 'lucide-react'
+import {
+  BarChart3,
+  ListMusic,
+  Menu,
+  Mic,
+  Monitor,
+  Moon,
+  Search,
+  Sun,
+  Upload,
+  X,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useOutlet } from 'react-router'
@@ -7,6 +18,7 @@ import { useCurrentJob, useHealth } from '../api/queries'
 import { isJobActive } from '../api/types'
 import { useTheme, type ThemePreference } from '../lib/theme'
 import { AccountPanel } from './AccountPanel'
+import { CommandPalette } from './CommandPalette'
 import { WaveBackdrop } from './art'
 import { EASE_OUT } from '../lib/easing'
 import { cn } from '../lib/utils'
@@ -213,6 +225,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const location = useLocation()
   const [menuOpenOn, setMenuOpenOn] = useState<string | null>(null)
   const menuOpen = menuOpenOn === location.pathname
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const setMenuOpen = (open: boolean) => setMenuOpenOn(open ? location.pathname : null)
 
   return (
@@ -251,8 +264,28 @@ export function AppShell({ children }: { children?: ReactNode }) {
             </Button>
             <Brand />
           </div>
-          <div className="hidden lg:block" />
-          <CurrentJob />
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="glass text-muted hover:text-fg hidden h-9 w-full max-w-sm items-center gap-2 rounded-full px-3.5 text-sm transition-colors lg:flex"
+          >
+            <Search className="size-4" aria-hidden />
+            <span className="flex-1 text-left">Search meetings and transcripts…</span>
+            <kbd className="border-border rounded border px-1.5 font-mono text-[10px]">Ctrl K</kbd>
+          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="lg:hidden"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Search"
+            >
+              <Search aria-hidden />
+            </Button>
+            <CurrentJob />
+          </div>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         </header>
 
         <AnimatePresence>

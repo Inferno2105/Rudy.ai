@@ -1,10 +1,11 @@
-import { Search } from 'lucide-react'
+import { LocateFixed, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 
 import { isNotFound } from '../../api/client'
 import { useArtifact, useTranscript } from '../../api/queries'
 import type { RunDetail, Segment, StageInfo } from '../../api/types'
-import { AudioPlayer, type AudioPlayerHandle } from '../../components/AudioPlayer'
+import { MeetingPlayer, type MeetingPlayerHandle } from '../../components/MeetingPlayer'
 import { SpeakerTimeline } from '../../components/SpeakerTimeline'
 import { ErrorState, NotProduced } from '../../components/states'
 import { LanguageLegend } from '../../components/status'
@@ -74,8 +75,17 @@ export function TranscriptTab({
   const [script, setScript] = useState<Script>('romanized')
   const original = useArtifact(run.run_id, 'tagged', canToggle && script === 'original')
   const [query, setQuery] = useState('')
-  const [currentTime, setCurrentTime] = useState<number | null>(null)
-  const player = useRef<AudioPlayerHandle>(null)
+  // A link to a moment (?t=seconds, from search) starts with that line
+  // current; the run page remounts this tab when ?t changes.
+  const [params] = useSearchParams()
+  const jumpTo = Number.parseFloat(params.get('t') ?? '')
+  const [currentTime, setCurrentTime] = useState<number | null>(
+    Number.isFinite(jumpTo) ? jumpTo : null,
+  )
+  const player = useRef<MeetingPlayerHandle>(null)
+  // Follow the playing line until the reader scrolls away themselves.
+  const [follow, setFollow] = useState(true)
+  const [morphKey, setMorphKey] = useState(0)
 
   const segments: Segment[] | null =
     liveSegments && liveSegments.length > 0
@@ -91,6 +101,28 @@ export function TranscriptTab({
   )
 
   const hasRecording = run.mode === 'batch' && run.provenance.input != null
+
+  useEffect(() => {
+    const stopFollowing = () => setFollow(false)
+    window.addEventListener('wheel', stopFollowing, { passive: true })
+    window.addEventListener('touchmove', stopFollowing, { passive: true })
+    return () => {
+      window.removeEventListener('wheel', stopFollowing)
+      window.removeEventListener('touchmove', stopFollowing)
+    }
+  }, [])
+
+  // Cue the recording at the linked moment once the player exists, without
+  // starting playback.
+  const segmentsReady = Boolean(segments?.length)
+  useEffect(() => {
+    if (segmentsReady && Number.isFinite(jumpTo)) player.current?.seek(jumpTo, { play: false })
+  }, [segmentsReady, jumpTo])
+
+  function seek(seconds: number) {
+    setFollow(true)
+    player.current?.seek(seconds)
+  }
 
   // The sticky player sits under the sticky header; widen the page's scroll
   // padding to clear both, so a segment reached with Tab is never hidden.
@@ -129,12 +161,12 @@ export function TranscriptTab({
       {hasRecording ? (
         // Player and timeline stay in view while the transcript scrolls.
         <div className="glass sticky top-16 z-20 space-y-3 rounded-2xl p-3">
-          <AudioPlayer ref={player} runId={run.run_id} onTimeUpdate={setCurrentTime} />
-          <SpeakerTimeline
+          <MeetingPlayer
+            ref={player}
+            runId={run.run_id}
             segments={segments}
             palette={palette}
-            currentTime={currentTime}
-            onSeek={(seconds) => player.current?.seek(seconds)}
+            onTimeUpdate={setCurrentTime}
           />
         </div>
       ) : (
@@ -169,7 +201,13 @@ export function TranscriptTab({
               : `${segments.length} segment${segments.length === 1 ? '' : 's'}`}
           </span>
           {canToggle && !liveSegments?.length ? (
-            <ScriptToggle value={script} onChange={setScript} />
+            <ScriptToggle
+              value={script}
+              onChange={(next) => {
+                setScript(next)
+                setMorphKey((key) => key + 1)
+              }}
+            />
           ) : null}
         </div>
       </div>
@@ -192,11 +230,23 @@ export function TranscriptTab({
               palette={palette}
               query={query}
               currentTime={currentTime}
-              onSeek={hasRecording ? (seconds) => player.current?.seek(seconds) : undefined}
+              onSeek={hasRecording ? seek : undefined}
+              follow={follow && !query}
+              morphKey={morphKey}
             />
           )}
         </CardBody>
       </Card>
+
+      {!follow && currentTime != null && !query ? (
+        <button
+          type="button"
+          onClick={() => setFollow(true)}
+          className="glass text-fg animate-enter fixed right-6 bottom-6 z-30 inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium shadow-lg"
+        >
+          <LocateFixed className="text-accent size-4" aria-hidden /> Follow along
+        </button>
+      ) : null}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import type {
   Job,
   MetadataResponse,
   RunDetail,
+  SearchHit,
   RunSummary,
   Segment,
   SpeakersResponse,
@@ -264,3 +265,18 @@ export const evalReport: EvalReport = {
     diarization: { der: 0.1523 },
   },
 }
+
+export const searchHits: SearchHit[] = [
+  {
+    run_id: RUN_ID,
+    idx: 1,
+    start: 4.2,
+    end: 8.9,
+    speaker: 'SPEAKER_01',
+    language: 'Code-Mixed',
+    text: 'release Friday ko hoga, testing kal tak',
+    mode: 'batch',
+    created_at: '2026-10-01T15:28:23',
+    audio_path: 'data/audio/test_hindi.wav',
+  },
+]
