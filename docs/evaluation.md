@@ -51,106 +51,43 @@ from memory later.
 
 ## Labelling protocol
 
-Each clip needs some subset of these references, depending on which metric
-families it is meant to exercise. None are required for every clip — a clip
-can be labelled incrementally, and `generate_clip_report` skips a family
-cleanly when its reference is absent (see
-`backend/src/meeting_assistant/evaluation/report.py`).
+**`docs/annotation-guide.md` is the step-by-step protocol** annotators follow:
+what to write in each file, how to mark speaker turns and language stretches in
+Audacity, the agreed decisions for ambiguous cases, and the blind second-annotator
+pass for inter-annotator agreement. `meeting-assistant dataset new <clip_id>`
+creates a clip's folder with templates, and `meeting-assistant dataset check`
+parses every label exactly as the evaluation will and reports what to fix.
 
-### Speaker turns, for DER (`turns.rttm`)
+Two design rules shape the protocol:
 
-1. Open the clip in **Audacity**.
-2. Add a label track (`Tracks > Add New > Label Track`).
-3. Mark each speaker turn boundary by ear, labelling each region with a
-   speaker identifier (`A`, `B`, a real name — the labeller's choice, since
-   DER matches labels by optimal overlap, not by name).
-4. Export: `File > Export > Export Labels`. This produces a tab-separated
-   `start\tend\tlabel` file.
-5. Convert it with `meeting_assistant.evaluation.rttm.labels_to_rttm(path)`
-   and write the result to `data/eval/references/<clip_id>/turns.rttm` via
-   `meeting_assistant.evaluation.rttm.write_rttm` (or just save the raw
-   Audacity export as `turns.rttm`-shaped by hand for a short clip — the
-   reader (`read_rttm`) only needs valid RTTM `SPEAKER` lines).
-
-Budget roughly 20-30 minutes of labelling per clip — this is the slowest
-label to produce, which is exactly why the conversion tooling exists rather
-than requiring RTTM syntax to be typed by hand.
-
-### Reference transcript, for WER/CER (`transcript.txt`)
-
-One continuous plain-text file: listen to the clip and type what was
-actually said, in whatever script feels natural per word (Devanagari for
-Hindi, Latin for English — do not pre-romanize; that is what
-`WER_romanized` is for). Punctuation and casing do not matter — both sides
-of every WER/CER comparison go through
-`meeting_assistant.evaluation.text_norm.normalize_text` first.
-
-### Language tags, for language-ID accuracy (`languages.json`)
-
-A JSON list of labels (`"English"` / `"Hindi"` / `"Code-Mixed"`), **one per
-segment of the run's own tagged transcript**, in the same order. Practically:
-run the clip through `meeting-assistant batch <clip>.wav` first, open its
-`05_tagged.json`, and label each segment's *true* language next to the
-tagger's guess — this is a manual per-segment agree/disagree pass, not
-independent labelling from scratch, and is quick (a few minutes per clip).
-
-**Double-label a ~20% subset with a second annotator** and compute Cohen's
-kappa (`meeting_assistant.evaluation.langid_metrics.cohens_kappa`) between
-the two label sets for those clips. This is cheap and is exactly the kind of
-check a reviewer asks for on any human-labelled categorical task — it
-answers "is this a reliable ground truth" independently of how well the
-tagger did against it.
-
-### Reference summary, for ROUGE (`summary.txt`)
-
-A few sentences, written after reading the reference transcript, summarizing
-what the meeting was actually about. Independent of what the pipeline
-produces — write it before looking at the pipeline's own summary, or the
-comparison is not measuring anything.
-
-### Reference action items, for extraction P/R/F1 (`action_items.json`)
-
-A JSON list of `{"person": ..., "task": ..., "deadline": ...}` objects (any
-field may be `null`), one per real commitment made in the meeting. See
-`meeting_assistant.evaluation.intel_metrics.action_item_metrics` for exactly
-how a predicted item is matched to a reference one (person must agree when
-both are named; task is matched by normalized word overlap, not exact text).
-
-### True speaker identity, for the speaker registry (`true_speakers.json`)
-
-Only meaningful for a **live** run spanning multiple chunks, where cross-chunk
-identity resolution is actually exercised. A JSON list of real names/ids, one
-per segment of the run's resolved transcript, in the same order — walk the
-run's stitched output and write down who each segment's speaker actually was.
-`meta.json`'s `true_speaker_count` should record the true number of distinct
-speakers in the meeting (not inferred from however many labels happen to
-appear, in case someone spoke too briefly to ever be resolved).
-
-### Per-clip metadata (`meta.json`)
-
-```json
-{ "true_speaker_count": 2 }
-```
-
-Currently just the one field the registry metrics need; extend as needed.
+- **Language and speaker labels are given by time, never per system segment.**
+  Labels attached to "segment 7 of run X" would be tied to how one run cut the
+  audio, so a configuration that segments differently (another Whisper model)
+  could not be scored against them; and labelling next to the system's own
+  guess biases the annotator towards agreeing with it. Each system segment is
+  matched to the reference label that overlaps it the longest
+  (`evaluation/references.py`), and the number of segments scored is reported.
+- **True speaker identities come from the speaker turns** (`turns.txt`), by the
+  same time overlap, so there is no separate identity file to keep in step.
 
 ## The reference directory contract
 
 ```
 data/eval/
-├── clips/                          # (reserved; audio itself lives in data/audio/)
 ├── references/
 │   └── <clip_id>/                  # clip_id matches data/audio/<clip_id>.wav
-│       ├── transcript.txt
-│       ├── turns.rttm
-│       ├── languages.json
+│       ├── transcript.txt          # what was said, each word in its spoken script
+│       ├── turns.txt               # Audacity labels: start, end, speaker
+│       ├── languages.txt           # Audacity labels: start, end, Hindi/English/Code-Mixed
+│       ├── languages_b.txt         # second annotator, same stretches (some clips)
 │       ├── summary.txt
-│       ├── action_items.json
-│       ├── true_speakers.json
-│       └── meta.json
+│       ├── action_items.txt        # person | task | deadline, or "none"
+│       └── meta.json               # condition, speakers, device, date, consent ids
 └── reports/
     └── latest.json                 # written by `meeting-assistant eval`
 ```
+
+The older formats (`turns.rttm`, `action_items.json`) are still read.
 
 Run `meeting-assistant eval` once a clip has both a labelled reference
 directory and a completed run (`meeting-assistant batch data/audio/<clip_id>.wav`)
@@ -224,7 +161,10 @@ embedding window was too short) and mean match similarity.
 ### Language ID: accuracy, per-class P/R/F1, confusion matrix, kappa
 
 Standard classification metrics via `scikit-learn`
-(`evaluation/langid_metrics.py`). `cohens_kappa` is `nan`, not `1.0`, when
+(`evaluation/langid_metrics.py`), over the system segments that overlap a
+reference language stretch. Annotator agreement is Cohen's kappa over the
+stretches both annotators labelled (`languages.txt` and `languages_b.txt`),
+pooled across clips and written to the report as `annotator_agreement`. `cohens_kappa` is `nan`, not `1.0`, when
 both annotators used only one label throughout their overlap — with a single
 possible label, chance agreement is also 100%, making the statistic
 mathematically undefined rather than perfect. Report the `nan` as-is; do not

@@ -22,14 +22,12 @@ from meeting_assistant.pipeline.manifest import RunManifest
 
 def _write_reference_clip(clip_dir):
     clip_dir.mkdir(parents=True)
-    _write_text(clip_dir / "transcript.txt", "good morning everyone")
+    _write_text(clip_dir / "transcript.txt", "# template note, ignored\ngood morning everyone")
     _write_text(clip_dir / "summary.txt", "the team said good morning")
-    write_json(
-        clip_dir / "action_items.json", [{"person": "Riya", "task": "say hi", "deadline": None}]
-    )
-    write_json(clip_dir / "languages.json", ["English"])
-    write_json(clip_dir / "true_speakers.json", ["Riya"])
-    write_json(clip_dir / "meta.json", {"true_speaker_count": 1})
+    _write_text(clip_dir / "action_items.txt", "Riya | say hi | -\n")
+    _write_text(clip_dir / "turns.txt", "0.000000\t2.000000\tRiya\n")
+    _write_text(clip_dir / "languages.txt", "0.000000\t2.000000\tE\n")
+    write_json(clip_dir / "meta.json", {"speakers": 1})
 
 
 def test_load_clip_reference_reads_every_optional_file(tmp_path):
@@ -39,9 +37,21 @@ def test_load_clip_reference_reads_every_optional_file(tmp_path):
     assert reference.transcript_text == "good morning everyone"
     assert reference.summary == "the team said good morning"
     assert reference.action_items == [{"person": "Riya", "task": "say hi", "deadline": None}]
-    assert reference.languages == ["English"]
-    assert reference.true_speakers == ["Riya"]
+    assert reference.turns == [{"start": 0.0, "end": 2.0, "speaker": "Riya"}]
+    assert reference.language_spans == [{"start": 0.0, "end": 2.0, "language": "English"}]
     assert reference.true_speaker_count == 1
+
+
+def test_load_clip_reference_still_reads_the_older_json_formats(tmp_path):
+    clip_dir = tmp_path / "clip09"
+    clip_dir.mkdir()
+    write_json(
+        clip_dir / "action_items.json", [{"person": "Riya", "task": "say hi", "deadline": None}]
+    )
+    write_json(clip_dir / "meta.json", {"true_speaker_count": 2})
+    reference = _load_clip_reference(clip_dir)
+    assert reference.action_items == [{"person": "Riya", "task": "say hi", "deadline": None}]
+    assert reference.true_speaker_count == 2
 
 
 def test_load_clip_reference_tolerates_a_partially_labelled_clip(tmp_path):
@@ -97,7 +107,7 @@ def test_load_clip_hypothesis_reads_transcript_text_and_system_metrics(tmp_path)
     hypothesis = _load_clip_hypothesis(run)
 
     assert hypothesis.transcript_text == "good morning everyone"
-    assert hypothesis.languages == ["English"]
+    assert [s["language"] for s in hypothesis.resolved_segments] == ["English"]
     assert hypothesis.summary == "greeting"
     assert hypothesis.system_metrics == {"realtime_factor": 0.4, "transcribe_seconds": 1.5}
 
@@ -202,3 +212,37 @@ def test_cmd_eval_records_which_run_each_clip_was_scored_against(tmp_path, monke
     assert "generated_at" in report and "git" in report
     # Provenance is not a metric family and must not be "averaged".
     assert "source" not in report["aggregate"]
+
+
+def test_cmd_eval_scores_language_by_time_and_records_agreement(tmp_path, monkeypatch):
+    from meeting_assistant.io_utils import read_json
+
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    clip_dir = tmp_path / "eval" / "references" / "clip01"
+    _write_reference_clip(clip_dir)
+    _write_text(clip_dir / "languages_b.txt", "0.000000\t2.000000\tEnglish\n")
+    _write_completed_run(tmp_path / "runs", "clip01.wav")
+
+    assert cmd_eval(argparse_namespace()) == 0
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+
+    language = report["clips"][0]["language_id"]
+    assert language["accuracy"] == 1.0
+    assert language["segments_scored"] == 1
+    agreement = report["annotator_agreement"]
+    assert agreement["stretches"] == 1 and agreement["observed_agreement"] == 1.0
+    assert agreement["cohens_kappa"] is None  # one label only: kappa is undefined
+
+
+def test_cmd_eval_skips_a_clip_whose_labels_cannot_be_read(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    clip_dir = tmp_path / "eval" / "references" / "clip01"
+    _write_reference_clip(clip_dir)
+    _write_text(clip_dir / "languages.txt", "0.0\t2.0\tHinglish\n")
+    _write_completed_run(tmp_path / "runs", "clip01.wav")
+
+    assert cmd_eval(argparse_namespace()) == 1
+    out = capsys.readouterr().out
+    assert "[skip] clip01" in out and "dataset check" in out

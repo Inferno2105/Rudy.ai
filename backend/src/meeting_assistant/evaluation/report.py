@@ -40,7 +40,6 @@ class ClipHypothesis:
 
     transcript_text: str | None = None
     turns: list[dict[str, Any]] | None = None
-    languages: list[str] | None = None
     summary: str | None = None
     action_items: list[dict[str, Any]] | None = None
     resolved_segments: list[dict[str, Any]] | None = None
@@ -55,10 +54,11 @@ class ClipReference:
 
     transcript_text: str | None = None
     turns: list[dict[str, Any]] | None = None
-    languages: list[str] | None = None
+    # Language by time: [{"start", "end", "language"}], labelled without
+    # seeing any system output (see evaluation/references.py).
+    language_spans: list[dict[str, Any]] | None = None
     summary: str | None = None
     action_items: list[dict[str, Any]] | None = None
-    true_speakers: list[str] | None = None
     true_speaker_count: int | None = None
 
 
@@ -67,13 +67,14 @@ def generate_clip_report(
 ) -> dict[str, Any]:
     """One clip's full metric report, as a plain JSON-serializable dict.
 
-    ``registry`` pairs ``hypothesis.resolved_segments`` with
-    ``reference.true_speakers`` positionally (segment *i*'s true speaker is
-    ``true_speakers[i]``), so the two must already be the same length and
-    order — the reference labelling protocol is expected to walk the run's
-    own stitched transcript and label each segment in place, not describe
-    speakers independently.
+    Language and speaker identity are matched **by time**: each system segment
+    takes the reference language (``language_spans``) and the true speaker
+    (``turns``) that overlap it the longest. Segments that overlap no reference
+    label (silence, or speech the annotator left out) are not scored, and the
+    number scored is reported, so a reference that covers little of a run
+    cannot pass unnoticed.
     """
+    from meeting_assistant.evaluation.references import label_at
     report: dict[str, Any] = {"clip_id": clip_id}
 
     if hypothesis.transcript_text is not None and reference.transcript_text is not None:
@@ -92,10 +93,20 @@ def generate_clip_report(
     if hypothesis.turns is not None and reference.turns is not None:
         report["diarization"] = diarization_error_rate(reference.turns, hypothesis.turns).as_dict()
 
-    if hypothesis.languages is not None and reference.languages is not None:
-        report["language_id"] = classification_metrics(
-            reference.languages, hypothesis.languages
-        ).as_dict()
+    if hypothesis.resolved_segments is not None and reference.language_spans is not None:
+        pairs = [
+            (truth, segment.get("language"))
+            for segment in hypothesis.resolved_segments
+            if (truth := label_at(segment["start"], segment["end"], reference.language_spans,
+                                  "language")) is not None
+        ]
+        report["language_id"] = {
+            **classification_metrics(
+                [truth for truth, _ in pairs], [str(guess) for _, guess in pairs]
+            ).as_dict(),
+            "segments_scored": len(pairs),
+            "segments_total": len(hypothesis.resolved_segments),
+        }
 
     if hypothesis.summary is not None and reference.summary is not None:
         report["summary"] = summary_rouge(reference.summary, hypothesis.summary).as_dict()
@@ -105,15 +116,20 @@ def generate_clip_report(
             hypothesis.action_items, reference.action_items
         ).as_dict()
 
-    if hypothesis.resolved_segments is not None and reference.true_speakers is not None:
+    if hypothesis.resolved_segments is not None and reference.turns is not None:
         merged = [
-            {**segment, "true_speaker": true}
-            for segment, true in zip(
-                hypothesis.resolved_segments, reference.true_speakers, strict=True
-            )
+            {
+                **segment,
+                "true_speaker": label_at(segment["start"], segment["end"], reference.turns,
+                                         "speaker"),
+            }
+            for segment in hypothesis.resolved_segments
         ]
+        true_count = reference.true_speaker_count or len(
+            {turn["speaker"] for turn in reference.turns}
+        )
         report["registry"] = registry_summary_metrics(
-            merged, true_speaker_count=reference.true_speaker_count
+            merged, true_speaker_count=true_count
         ).as_dict()
 
     if hypothesis.system_metrics is not None:

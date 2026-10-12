@@ -332,37 +332,52 @@ def _clip_source(manifest) -> dict:
 
 
 def _load_clip_reference(clip_dir):
-    """Read one clip's reference bundle from ``data/eval/references/<clip_id>/``.
+    """Read one clip's reference labels from ``data/eval/references/<clip_id>/``.
 
-    Every file is optional (see ``docs/evaluation.md`` for the full contract):
-    a clip need only carry references for the metric families it is meant to
-    exercise, and :func:`~meeting_assistant.evaluation.report.generate_clip_report`
-    already skips a family cleanly when either side is missing.
+    Every label is optional (see ``docs/annotation-guide.md``): a clip need only
+    carry references for the metric families it is meant to exercise, and
+    :func:`~meeting_assistant.evaluation.report.generate_clip_report` skips a
+    family cleanly when either side is missing.
     """
+    from meeting_assistant.evaluation.references import read_clip
     from meeting_assistant.evaluation.report import ClipReference
-    from meeting_assistant.evaluation.rttm import read_rttm
-    from meeting_assistant.io_utils import read_json
 
-    def text(name: str) -> str | None:
-        path = clip_dir / name
-        return path.read_text(encoding="utf-8").strip() if path.exists() else None
-
-    def data(name: str):
-        path = clip_dir / name
-        return read_json(path) if path.exists() else None
-
-    turns = read_rttm(clip_dir / "turns.rttm") if (clip_dir / "turns.rttm").exists() else None
-    meta = data("meta.json") or {}
-
+    labels = read_clip(clip_dir)
     return ClipReference(
-        transcript_text=text("transcript.txt"),
-        turns=turns,
-        languages=data("languages.json"),
-        summary=text("summary.txt"),
-        action_items=data("action_items.json"),
-        true_speakers=data("true_speakers.json"),
-        true_speaker_count=meta.get("true_speaker_count"),
+        transcript_text=labels.transcript,
+        turns=labels.turns,
+        language_spans=labels.language_spans,
+        summary=labels.summary,
+        action_items=labels.action_items,
+        true_speaker_count=labels.meta.get("speakers") or labels.meta.get("true_speaker_count"),
     )
+
+
+def _annotator_agreement(clip_dirs) -> dict | None:
+    """Cohen's kappa between the two annotators' language labels, pooled over
+    every clip that has a second annotator's ``languages_b.txt``."""
+    from meeting_assistant.evaluation.langid_metrics import cohens_kappa
+    from meeting_assistant.evaluation.references import paired_language_labels, read_clip
+
+    pairs, clips = [], []
+    for clip_dir in clip_dirs:
+        labels = read_clip(clip_dir)
+        if labels.language_spans and labels.second_language_spans:
+            clip_pairs = paired_language_labels(
+                labels.language_spans, labels.second_language_spans
+            )
+            if clip_pairs:
+                pairs.extend(clip_pairs)
+                clips.append(clip_dir.name)
+    if not pairs:
+        return None
+    kappa = cohens_kappa([a for a, _ in pairs], [b for _, b in pairs])
+    return {
+        "cohens_kappa": None if kappa != kappa else kappa,  # NaN: one label only, undefined
+        "stretches": len(pairs),
+        "observed_agreement": round(sum(a == b for a, b in pairs) / len(pairs), 4),
+        "clips": clips,
+    }
 
 
 def _load_clip_hypothesis(run):
@@ -374,12 +389,10 @@ def _load_clip_hypothesis(run):
     from meeting_assistant.pipeline.stages import resolve_intel_input
 
     transcript_text = None
-    languages = None
     resolved_segments = None
     try:
         _, segments = resolve_intel_input(run)
         transcript_text = " ".join(s.get("text", "") for s in segments)
-        languages = [s.get("language") for s in segments]
         resolved_segments = segments
     except ArtifactError:
         pass
@@ -407,7 +420,6 @@ def _load_clip_hypothesis(run):
     return ClipHypothesis(
         transcript_text=transcript_text,
         turns=turns,
-        languages=languages,
         summary=summary,
         action_items=action_items,
         resolved_segments=resolved_segments,
@@ -418,6 +430,7 @@ def _load_clip_hypothesis(run):
 def cmd_eval(args: argparse.Namespace) -> int:
     """Score one or more runs against their labelled references and report."""
     from meeting_assistant import paths as paths_mod
+    from meeting_assistant.evaluation.references import LabelError
     from meeting_assistant.evaluation.report import aggregate_reports, generate_clip_report
     from meeting_assistant.io_utils import write_json
 
@@ -462,7 +475,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
             print(f"  [skip] {clip_id}: no eligible run found for data/audio/{clip_id}.wav")
             continue
         hypothesis = _load_clip_hypothesis(run)
-        reference = _load_clip_reference(clip_dir)
+        try:
+            reference = _load_clip_reference(clip_dir)
+        except LabelError as exc:
+            print(f"  [skip] {clip_id}: {exc} (run `meeting-assistant dataset check`)")
+            continue
         report = generate_clip_report(clip_id, hypothesis, reference)
         report["source"] = _clip_source(RunManifest.load(run))
         reports.append(report)
@@ -476,6 +493,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
     from meeting_assistant.provenance import git_state
 
+    try:
+        agreement = _annotator_agreement(clip_dirs)
+    except LabelError as exc:
+        print(f"\n[warn] annotator agreement not computed: {exc}")
+        agreement = None
     config_hashes = sorted({r["source"]["config_hash"] for r in reports} - {None})
     if len(config_hashes) > 1:
         print(f"\n[warn] the scored runs span {len(config_hashes)} configurations: {config_hashes}")
@@ -487,6 +509,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "git": git_state(),
             "config_hashes": config_hashes,
+            "annotator_agreement": agreement,
             "clips": reports,
             "aggregate": aggregated,
         },
@@ -623,6 +646,59 @@ def cmd_openapi(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dataset(args: argparse.Namespace) -> int:
+    """Create, check and prepare the evaluation dataset's label folders."""
+    from meeting_assistant.evaluation import dataset
+
+    if args.dataset_cmd == "new":
+        try:
+            folder, notes = dataset.new_clip(args.clip_id)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Created {folder}")
+        for note in notes:
+            print(f"Note: {note}")
+        print("Next: label it as docs/annotation-guide.md describes, then run "
+              "`meeting-assistant dataset check`.")
+        return 0
+
+    if args.dataset_cmd == "blind-copy":
+        try:
+            target, count = dataset.blind_copy(args.clip_id)
+        except (ValueError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote {target} ({count} stretches, each labelled '?').")
+        print("Second annotator: open the recording in Audacity, File > Import > Labels... this "
+              "file, replace every '?' with Hindi, English or Code-Mixed without looking at "
+              "languages.txt, then File > Export > Export Labels... over the same file.")
+        return 0
+
+    checks = dataset.check_all(args.clip_id)
+    if not checks:
+        target = f" named {args.clip_id}" if args.clip_id else ""
+        print(f"No clip folders{target} under {dataset.references_dir()}.")
+        print("Create one with: meeting-assistant dataset new <clip_id>")
+        return 1
+    print(dataset.format_report(checks))
+
+    from meeting_assistant.evaluation.references import LabelError
+
+    try:
+        agreement = _annotator_agreement([dataset.references_dir() / c.clip_id for c in checks])
+    except LabelError:
+        agreement = None  # already reported above
+    if agreement:
+        kappa = agreement["cohens_kappa"]
+        print(
+            f"Annotator agreement so far: kappa {kappa if kappa is not None else 'undefined'} "
+            f"over {agreement['stretches']} stretches in {len(agreement['clips'])} clip(s) "
+            f"({agreement['observed_agreement']:.0%} identical labels)."
+        )
+    return 1 if any(c.errors for c in checks) else 0
+
+
 def cmd_reindex(args: argparse.Namespace) -> int:  # noqa: ARG001 -- argparse namespace, currently no flags used
     """Rebuild the SQLite index from every run directory on disk."""
     from meeting_assistant import paths as paths_mod
@@ -724,6 +800,27 @@ def build_parser() -> argparse.ArgumentParser:
         "eval", help="score labelled clips under data/eval/references/ against their runs"
     )
     eval_parser.set_defaults(func=cmd_eval)
+
+    dataset_parser = subparsers.add_parser(
+        "dataset", help="create and check the evaluation clips' label folders"
+    )
+    dataset_sub = dataset_parser.add_subparsers(dest="dataset_cmd", required=True)
+    new_parser = dataset_sub.add_parser(
+        "new", help="create data/eval/references/<clip_id>/ with label templates"
+    )
+    new_parser.add_argument(
+        "clip_id", help="e.g. clip01; the recording is data/audio/<clip_id>.wav"
+    )
+    check_parser = dataset_sub.add_parser(
+        "check", help="check every clip's labels (or one clip's) and list what to fix"
+    )
+    check_parser.add_argument("clip_id", nargs="?", help="only this clip")
+    blind_parser = dataset_sub.add_parser(
+        "blind-copy",
+        help="copy a clip's language stretches without labels, for the second annotator",
+    )
+    blind_parser.add_argument("clip_id")
+    dataset_parser.set_defaults(func=cmd_dataset)
 
     serve = subparsers.add_parser("serve", help="run the HTTP API and web UI")
     serve.add_argument("--host", help=f"bind address (default {config.API_HOST})")
