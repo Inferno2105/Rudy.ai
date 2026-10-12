@@ -87,3 +87,6 @@ paper/page-*.png
 *.swp
 Thumbs.db
 desktop.ini
+
+# Office lock files (a document is open in Word)
+~$*

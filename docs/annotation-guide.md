@@ -55,29 +55,23 @@ Allow about **1–1½ hours per recording** of 1–3 minutes:
 3. **Label what was said, not what was meant.** Do not correct grammar, finish
    sentences or translate.
 
-## Decisions to agree before labelling
+## Decisions for ambiguous cases
 
 These are the cases where two careful people would otherwise label
-differently. A recommendation is given for each; **agree on one, write it in
-the "Agreed" line, and never change it once labelling has begun.**
+differently. **Apply them to every clip, and never change them once labelling
+has begun.**
 
 **D1. English words inside Hindi speech** (*meeting, office, plan, time,
 phone, deadline*).
-Recommended: write them in Latin script, and they count as English words when
-choosing a language tag. So *"आज की meeting में plan discuss करेंगे"* is
-Code-Mixed. The alternative treats everyday borrowings as Hindi (*"मीटिंग"*);
-that is harder to apply consistently, because which words count as
-"everyday" is a judgement call.
-Agreed: ______________________
+Write them in Latin script, and they count as English words when choosing a
+language tag. So *"आज की meeting में plan discuss करेंगे"* is Code-Mixed.
 
 **D2. Hesitation sounds and filler words.**
-Recommended: leave out pure hesitation sounds (*umm, uh, hmm*), and write words
-that carry meaning or structure (*haan, accha, okay, matlab, yaani, actually*).
-Agreed: ______________________
+Leave out pure hesitation sounds (*umm, uh, hmm*), and write words that carry
+meaning or structure (*haan, accha, okay, matlab, yaani, actually*).
 
 **D3. Repetitions and false starts** (*"we we need"*, *"kal — nahi, parso"*).
-Recommended: write them as spoken, including the corrected part.
-Agreed: ______________________
+Write them as spoken, including the corrected part.
 
 ## Step 1 — Create the clip's folder
 
@@ -185,9 +179,11 @@ One line for every commitment someone made in the meeting:
 person | task | deadline
 ```
 
-- **`person`:** who will do it. Use the consent-form id if it was a
-  participant, or the name or role as said ("the design team"). Write `-` if
-  nobody was named.
+- **`person`:** who will do it, **by the name or role said in the meeting**
+  ("Riya", "the design team"), because the app can only know names it heard
+  and the score compares names. Not the consent-form id. If the person is only
+  implied ("I'll do it"), write the name the others call that speaker in the
+  recording. Write `-` if nobody was named.
 - **`task`:** what will be done, in a few words.
 - **`deadline`:** as said ("Friday", "kal", "end of month"), or `-` if none.
 - **If nobody committed to anything,** write the single word `none`, so an
@@ -196,8 +192,8 @@ person | task | deadline
 Example:
 
 ```text
-P02 | finish testing the release | kal
-P01 | send the updated build to everyone | Friday
+Karan | finish testing the release | kal
+Riya | send the updated build to everyone | Friday
 - | book the meeting room | -
 ```
 
@@ -258,7 +254,7 @@ file:
 ```text
 नमस्ते सबको, आज की meeting शुरू करते हैं
 let us review the release plan first
-release Friday को होगा, testing कल तक
+release Friday को होगा, Karan testing कल तक कर देगा
 ```
 
 `turns.txt` (as Audacity exports it: start, end, label, separated by tabs)
@@ -277,7 +273,7 @@ release Friday को होगा, testing कल तक
 
 `action_items.txt`
 ```text
-P01 | finish testing | कल
+Karan | finish testing | कल
 ```
 
 `summary.txt`
