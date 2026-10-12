@@ -28,6 +28,7 @@ from typing import Any
 
 import numpy as np
 
+from meeting_assistant.audio.level import LevelMeter
 from meeting_assistant.audio.vad import DEFAULT_VAD_CONFIG, VadConfig, create_vad, is_speech
 from meeting_assistant.audio.wav_io import save_wav
 from meeting_assistant.logging_setup import get_logger
@@ -35,6 +36,7 @@ from meeting_assistant.logging_setup import get_logger
 log = get_logger(__name__)
 
 OnChunkReady = Callable[[Path, float], None]
+Notify = Callable[[], None]
 FrameSource = Callable[[VadConfig, int | None], Iterator[np.ndarray]]
 
 
@@ -60,6 +62,9 @@ class RecordingStats:
 
     chunks_saved: int = 0
     chunks_discarded: int = 0
+    # False when the session ended before recording began: stopped, or the
+    # wait for ``start_event`` timed out. Nothing was recorded then.
+    started: bool = False
     total_audio_sec: float = 0.0
     session_duration_sec: float = 0.0
 
@@ -79,6 +84,11 @@ def record_chunks(
     vad_config: VadConfig = DEFAULT_VAD_CONFIG,
     device: int | None = None,
     stop_event: threading.Event | None = None,
+    start_event: threading.Event | None = None,
+    start_timeout_sec: float | None = None,
+    on_listening: Notify | None = None,
+    on_recording: Notify | None = None,
+    level_meter: LevelMeter | None = None,
     frame_source: FrameSource = microphone_frames,
 ) -> RecordingStats:
     """Record from the microphone, cutting a chunk at each natural pause.
@@ -106,6 +116,17 @@ def record_chunks(
         device: ``sounddevice`` input device index, or ``None`` for the system
             default.
         stop_event: when set, recording stops at the next frame.
+        start_event: when given, the microphone opens at once but nothing is
+            recorded until this is set, so a session can be made ready first
+            and started at the moment the speaker chooses. Without it,
+            recording begins with the first frame.
+        start_timeout_sec: give up waiting for ``start_event`` after this
+            long; the session then ends with nothing recorded.
+        on_listening: called once, when the first frame arrives: the
+            microphone is open and working.
+        on_recording: called once, when the first recorded frame arrives.
+        level_meter: receives every frame's loudness, recording or not, for a
+            live level meter.
         frame_source: where frames come from. The microphone by default;
             injectable so the chunking and stop logic can be tested without
             audio hardware.
@@ -125,6 +146,8 @@ def record_chunks(
 
     stats = RecordingStats()
     recording_start = time.time()
+    waiting_since = time.monotonic()
+    listening = False
     chunk_index = 0
     chunk_start_time = 0.0
     frames_seen = 0
@@ -159,6 +182,23 @@ def record_chunks(
             if stop_event is not None and stop_event.is_set():
                 log.info("Stop requested.")
                 break
+            if level_meter is not None:
+                level_meter.update(frame)
+            if not listening:
+                listening = True
+                if on_listening is not None:
+                    on_listening()
+            if not stats.started:
+                if start_event is not None and not start_event.is_set():
+                    waited = time.monotonic() - waiting_since
+                    if start_timeout_sec is not None and waited > start_timeout_sec:
+                        log.info("Nothing started recording within %.0fs; giving up.", waited)
+                        break
+                    continue
+                stats.started = True
+                recording_start = time.time()
+                if on_recording is not None:
+                    on_recording()
             frames_seen += 1
             speech = is_speech(vad, frame.tobytes(), vad_config)
 
@@ -204,5 +244,6 @@ def record_chunks(
     if current_chunk_frames:
         flush_chunk(current_chunk_frames)
 
-    stats.session_duration_sec = time.time() - recording_start
+    if stats.started:
+        stats.session_duration_sec = time.time() - recording_start
     return stats

@@ -75,6 +75,11 @@ stages take turns (speech models first, the language model last), so they fit
 on the card together. If memory is short, Ollama places part of the model on
 the CPU automatically; it gets slower, but it does not fail.
 
+Translating a transcript into Hindi uses a second model, `aya-expanse:8b`
+(about 5 GB, downloaded on first start with the other one). Only one model is
+loaded at a time, so switching between the pipeline's model and the
+translation model costs a few seconds of loading, not extra memory.
+
 ## Results and the paper
 
 The Docker configuration is recorded like any other: `whisper_device=cuda`,

@@ -1,12 +1,20 @@
-import { ChevronDown, Download } from 'lucide-react'
+import { ChevronDown, Download, FileText } from 'lucide-react'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 
-import { useArtifact } from '../../api/queries'
+import {
+  transcriptPdfUrl,
+  useArtifact,
+  useTranslation,
+  type TranscriptVersion,
+} from '../../api/queries'
 import type { ArtifactName, RunDetail } from '../../api/types'
 import { ErrorState } from '../../components/states'
+import { TranslationProgress } from '../../components/TranslationProgress'
 import { Button } from '../../components/ui/button'
-import { Card, CardHeader } from '../../components/ui/card'
+import { Card, CardBody, CardHeader } from '../../components/ui/card'
 import { EmptyState, LoadingBlock } from '../../components/ui/feedback'
+import { Segmented } from '../../components/ui/segmented'
 import { useToast } from '../../components/ui/toast-context'
 import { stageLabel } from '../../lib/stages'
 import { cn } from '../../lib/utils'
@@ -105,6 +113,68 @@ function ArtifactRow({
   )
 }
 
+const VERSION_HINT: Record<TranscriptVersion, string> = {
+  original: 'As spoken: Hindi in Devanagari, English in Latin letters.',
+  romanized: 'The same words, with Hindi written in Latin letters.',
+  english: 'A machine translation of the whole meeting into English.',
+  hindi: 'A machine translation of the whole meeting into Hindi, in Devanagari.',
+}
+
+/** The transcript as a formatted PDF, in any of its four versions. */
+function TranscriptDownload({ run }: { run: RunDetail }) {
+  const [version, setVersion] = useState<TranscriptVersion>('original')
+  const hasTranscript = ['tagged', 'merged', 'aligned'].some((name) => run.artifacts.includes(name))
+  const target = version === 'english' || version === 'hindi' ? version : null
+  const translation = useTranslation(run.run_id, target ?? 'english', target != null)
+  const ready = target == null || translation.data?.state === 'ready'
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        icon={<FileText />}
+        title="Transcript"
+        description="A formatted meeting record (PDF): details, summary and decisions, action items, participation statistics, and the full transcript with the time each turn began."
+      />
+      <CardBody className="space-y-4">
+        {hasTranscript ? (
+          <>
+            <div className="space-y-1.5">
+              <Segmented
+                name="transcript-version"
+                legend="Transcript version"
+                value={version}
+                onChange={setVersion}
+                options={[
+                  { value: 'original', label: 'Original' },
+                  {
+                    value: 'romanized',
+                    label: 'Romanized',
+                    disabled: !run.artifacts.includes('hinglish'),
+                  },
+                  { value: 'english', label: 'English' },
+                  { value: 'hindi', label: 'Hindi' },
+                ]}
+              />
+              <p className="text-muted text-xs">{VERSION_HINT[version]}</p>
+            </div>
+            {target && !ready ? (
+              <TranslationProgress runId={run.run_id} target={target} />
+            ) : (
+              <Button asChild variant="primary">
+                <a href={transcriptPdfUrl(run.run_id, version)} download>
+                  <Download aria-hidden /> Download PDF
+                </a>
+              </Button>
+            )}
+          </>
+        ) : (
+          <p className="text-muted text-sm">There is no transcript to download yet.</p>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
 export function ArtifactsTab({ run }: { run: RunDetail }) {
   const [params, setParams] = useSearchParams()
   const openNames = new Set((params.get(OPEN_PARAM) ?? '').split(',').filter(Boolean))
@@ -120,26 +190,29 @@ export function ArtifactsTab({ run }: { run: RunDetail }) {
   }
 
   return (
-    <Card>
-      <CardHeader
-        title="Artifacts"
-        description="Each stage's output exactly as written to the run directory, in pipeline order."
-      />
-      {run.artifacts.length === 0 ? (
-        <EmptyState title="No artifacts yet">Nothing has been written for this run.</EmptyState>
-      ) : (
-        <ul className="divide-border divide-y">
-          {run.artifacts.map((name) => (
-            <ArtifactRow
-              key={name}
-              runId={run.run_id}
-              name={name as ArtifactName}
-              open={openNames.has(name)}
-              onToggle={() => toggle(name)}
-            />
-          ))}
-        </ul>
-      )}
-    </Card>
+    <>
+      <TranscriptDownload run={run} />
+      <Card>
+        <CardHeader
+          title="Artifacts"
+          description="Each stage's output exactly as written to the run directory, in pipeline order."
+        />
+        {run.artifacts.length === 0 ? (
+          <EmptyState title="No artifacts yet">Nothing has been written for this run.</EmptyState>
+        ) : (
+          <ul className="divide-border divide-y">
+            {run.artifacts.map((name) => (
+              <ArtifactRow
+                key={name}
+                runId={run.run_id}
+                name={name as ArtifactName}
+                open={openNames.has(name)}
+                onToggle={() => toggle(name)}
+              />
+            ))}
+          </ul>
+        )}
+      </Card>
+    </>
   )
 }

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from meeting_assistant import accounts, config
 from meeting_assistant.api.auth import require_user
@@ -24,6 +24,7 @@ from meeting_assistant.api.schemas.runs import (
     SpeakersResponse,
     SummaryResponse,
     TranscriptResponse,
+    TranslationStatus,
     WaveformResponse,
 )
 from meeting_assistant.errors import ArtifactError, ProvenanceError
@@ -229,6 +230,118 @@ def get_transcript(paths: RunPaths = Depends(get_run_paths)) -> TranscriptRespon
     except ArtifactError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return TranscriptResponse(source_artifact=source, segments=segments)
+
+
+TranslationTarget = Literal["english", "hindi"]
+
+
+def _translation_status(
+    paths: RunPaths, target: TranslationTarget, jobs: JobManager
+) -> TranslationStatus:
+    from meeting_assistant.language.translate import load_translation
+
+    job = jobs.translation_job(paths.run_id, target)
+    if job is not None and job.state in ("queued", "running"):
+        progress = job.progress
+        return TranslationStatus(
+            target=target,
+            state=job.state,
+            done=progress.done if progress else 0,
+            total=progress.total if progress else None,
+        )
+    document = load_translation(paths, target)
+    if document is not None:
+        return TranslationStatus(
+            target=target,
+            state="ready",
+            done=document.get("segments_total"),
+            total=document.get("segments_total"),
+            model=document.get("model"),
+            prompt_version=document.get("prompt_version"),
+            created_at=document.get("created_at"),
+            segments_failed=int(document.get("segments_failed") or 0),
+            segments=document.get("segments"),
+        )
+    if job is not None and job.state == "failed":
+        return TranslationStatus(target=target, state="failed", error=job.error)
+    return TranslationStatus(target=target, state="missing")
+
+
+@router.get("/{run_id}/translations/{target}", response_model=TranslationStatus)
+def get_translation(
+    target: TranslationTarget,
+    paths: RunPaths = Depends(get_run_paths),
+    jobs: JobManager = Depends(get_jobs),
+) -> TranslationStatus:
+    """The transcript translated into English or Hindi, or how far making it has got."""
+    return _translation_status(paths, target, jobs)
+
+
+@router.post(
+    "/{run_id}/translations/{target}",
+    response_model=TranslationStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={404: {"description": "The run has no transcript to translate"}},
+)
+def start_translation(
+    target: TranslationTarget,
+    paths: RunPaths = Depends(get_run_paths),
+    jobs: JobManager = Depends(get_jobs),
+    user: accounts.User = Depends(require_user),
+) -> TranslationStatus:
+    """Translate the transcript with the local language model, in the background.
+
+    Answers with the current state: a translation that already exists for this
+    transcript is returned, not made again, and a request while one is being
+    made joins it.
+    """
+    from meeting_assistant.language.translate import ORIGINAL_CHAIN
+
+    current = _translation_status(paths, target, jobs)
+    if current.state in ("ready", "queued", "running"):
+        return current
+    if not any(paths.has(name) for name in ORIGINAL_CHAIN):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This meeting has no transcript yet")
+    jobs.submit_translation(paths, target, owner=user.uid)
+    return _translation_status(paths, target, jobs)
+
+
+def _attachment(file_name: str) -> str:
+    """A Content-Disposition value that survives non-ASCII file names."""
+    from urllib.parse import quote
+
+    fallback = file_name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(file_name)}"
+
+
+@router.get(
+    "/{run_id}/transcript.pdf",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "The transcript as a PDF"},
+        404: {"description": "The run has no transcript of that kind"},
+        409: {"description": "The translation has not been made yet"},
+    },
+)
+def download_transcript_pdf(
+    version: Literal["original", "romanized", "english", "hindi"] = Query(default="original"),
+    paths: RunPaths = Depends(get_run_paths),
+) -> Response:
+    """The transcript laid out as a meeting transcript, in one of four versions:
+    as spoken, romanized, or translated into English or Hindi (translate first)."""
+    from meeting_assistant.export.transcript_pdf import TranslationMissing, render_transcript_pdf
+
+    try:
+        data, file_name = render_transcript_pdf(paths, version)
+    except TranslationMissing as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ArtifactError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _attachment(file_name)},
+    )
 
 
 @router.get("/{run_id}/summary", response_model=SummaryResponse)

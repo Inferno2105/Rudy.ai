@@ -156,6 +156,8 @@ class StubPipeline:
     def __init__(self):
         self.batch_calls: list = []
         self.live_calls: list = []
+        self.translate_calls: list = []
+        self.live_auto_start = True
         self.gate: threading.Event | None = None
         self.fail = False
 
@@ -175,10 +177,20 @@ class StubPipeline:
         write_json(
             paths.artifact("tagged"),
             [
-                {"start": 0.0, "end": 2.0, "speaker": "SPEAKER_00", "text": "namaste",
-                 "language": "Hindi"},
-                {"start": 2.0, "end": 4.0, "speaker": "SPEAKER_01", "text": "hello",
-                 "language": "English"},
+                {
+                    "start": 0.0,
+                    "end": 2.0,
+                    "speaker": "SPEAKER_00",
+                    "text": "namaste",
+                    "language": "Hindi",
+                },
+                {
+                    "start": 2.0,
+                    "end": 4.0,
+                    "speaker": "SPEAKER_01",
+                    "text": "hello",
+                    "language": "English",
+                },
             ],
         )
         write_json(
@@ -190,15 +202,44 @@ class StubPipeline:
         manifest.set_status("completed")
         return paths
 
-    def run_live(self, opts, *, paths, stop_event):
+    def run_live(self, opts, *, paths, stop_event, start_event=None, level_meter=None):
+        """Like the real session: ``ready`` until started, then ``recording``.
+
+        With ``live_auto_start`` (the default) it starts at once, as if the
+        user pressed Start recording; tests of the waiting turn it off. Stopped
+        before it started, it removes its run, as the real one does.
+        """
+        import shutil
+
+        import numpy as np
+
         from meeting_assistant.io_utils import write_json
         from meeting_assistant.pipeline.manifest import RunManifest
 
         self.live_calls.append(opts)
+        manifest = RunManifest.load(paths)
+        steps = ["speech", "speakers", "microphone"]
+        if start_event is not None:
+            manifest.set_extra("live_phase", {"phase": "ready", "step": None, "steps": steps})
+            if self.live_auto_start:
+                start_event.set()
+            while not start_event.wait(timeout=0.02):
+                if level_meter is not None:
+                    level_meter.update(np.full(480, 1000, dtype=np.int16))
+                if stop_event.is_set():
+                    shutil.rmtree(paths.root, ignore_errors=True)
+                    return paths
+        manifest.set_extra(
+            "live_phase",
+            {"phase": "recording", "step": None, "steps": steps,
+             "recording_started_at": "2026-10-13T10:00:00.000"},
+        )
         segments = []
         # One "chunk" every 50 ms until stopped, the way the real worker
         # re-dumps the stitched transcript after each chunk.
         while not stop_event.wait(timeout=0.05):
+            if level_meter is not None:
+                level_meter.update(np.full(480, 8000, dtype=np.int16))
             segments.append(
                 {"start": float(len(segments)), "end": len(segments) + 1.0,
                  "speaker": "SPEAKER_G01", "text": f"chunk {len(segments)}"}
@@ -210,6 +251,42 @@ class StubPipeline:
         manifest.set_extra("live_stats", {"chunks_recorded": len(segments)})
         manifest.set_status("completed")
         return paths
+
+    def translate(self, paths, target, *, on_progress):
+        """Translate with a model stand-in that tags each text with its target."""
+        from meeting_assistant.language.translate import build_translation
+
+        self.translate_calls.append(target)
+        if self.gate is not None:
+            self.gate.wait(timeout=10)
+        if self.fail:
+            raise RuntimeError("stub translation failed")
+        build_translation(paths, target, TaggingLLM(target), on_progress=on_progress)
+
+
+class TaggingLLM:
+    """A language-model stand-in: replies with the input text tagged ``[target]``."""
+
+    model = "stub-llm"
+
+    def __init__(self, target: str):
+        self.target = target
+        self.prompts: list[str] = []
+
+    def generate(self, prompt, *, system=None):  # noqa: ARG002
+        self.prompts.append(prompt)
+        return f"[{self.target}] " + prompt.splitlines()[0].removeprefix("Original: ")
+
+
+@pytest.fixture(autouse=True)
+def stub_translation_models(monkeypatch):
+    """Translations in tests are made by ``TaggingLLM``; a stored translation
+    is only served while its model is the configured one."""
+    from meeting_assistant import config
+
+    monkeypatch.setattr(
+        config, "TRANSLATION_MODELS", {"english": TaggingLLM.model, "hindi": TaggingLLM.model}
+    )
 
 
 @pytest.fixture
@@ -245,7 +322,11 @@ def client(api_env, stub_pipeline):
     from meeting_assistant.api.app import create_app
     from meeting_assistant.api.jobs import JobManager
 
-    jobs = JobManager(run_batch=stub_pipeline.run_batch, run_live=stub_pipeline.run_live)
+    jobs = JobManager(
+        run_batch=stub_pipeline.run_batch,
+        run_live=stub_pipeline.run_live,
+        translate=stub_pipeline.translate,
+    )
     # An empty UI directory, so tests never depend on whether the real
     # frontend has been built.
     app = create_app(jobs=jobs, preload_models=False, frontend_dist=api_env / "no-ui")

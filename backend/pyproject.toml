@@ -47,6 +47,8 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.12",  # audio upload
+    "fpdf2>=2.8",                # transcript PDFs
+    "uharfbuzz>=0.50",           # text shaping, so Devanagari conjuncts render correctly in PDFs
 ]
 dev = [
     "pytest>=8.0",
@@ -65,7 +67,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-meeting_assistant = ["store/*.sql"]
+meeting_assistant = ["store/*.sql", "export/fonts/*"]
 
 [tool.ruff]
 line-length = 100

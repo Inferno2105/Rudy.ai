@@ -9,7 +9,7 @@ models, so the OpenAPI schema -- and the TypeScript client generated from it
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -102,6 +102,28 @@ class TranscriptResponse(BaseModel):
     segments: list[Segment]
 
 
+class TranslationStatus(BaseModel):
+    """A full translation of the transcript, or how far making one has got.
+
+    ``missing`` means none exists for the current transcript (never made, or
+    made before the transcript was re-generated); ``POST`` the same path to
+    make one. ``segments`` is present only when ``ready``.
+    """
+
+    target: Literal["english", "hindi"]
+    state: Literal["missing", "queued", "running", "ready", "failed"]
+    done: int | None = Field(default=None, description="Segments translated so far")
+    total: int | None = None
+    error: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    created_at: str | None = None
+    segments_failed: int = Field(
+        default=0, description="Segments the model could not translate; shown as spoken"
+    )
+    segments: list[Segment] | None = None
+
+
 class SummaryResponse(BaseModel):
     summary: str = ""
     highlights: list[str] = Field(default_factory=list)
@@ -177,4 +199,3 @@ class SearchHit(BaseModel):
     mode: str
     created_at: str | None = None
     audio_path: str | None = None
-

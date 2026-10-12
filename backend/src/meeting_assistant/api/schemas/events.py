@@ -42,5 +42,12 @@ class EndEvent(BaseModel):
     run_id: str
 
 
+class LevelEvent(BaseModel):
+    """``event: level`` on ``GET /api/live/level`` -- the microphone's loudness,
+    0 (silence) to 1 (full scale), several times a second."""
+
+    level: float = Field(ge=0, le=1)
+
+
 # ``event: job`` carries a :class:`meeting_assistant.api.schemas.jobs.Job`.
-EVENT_MODELS: tuple[type[BaseModel], ...] = (ManifestEvent, SegmentsEvent, EndEvent)
+EVENT_MODELS: tuple[type[BaseModel], ...] = (ManifestEvent, SegmentsEvent, EndEvent, LevelEvent)

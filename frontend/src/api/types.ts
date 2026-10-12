@@ -33,6 +33,8 @@ export type AggregateReport = Schemas['AggregateReport']
 export type ManifestEvent = Schemas['ManifestEvent']
 export type SegmentsEvent = Schemas['SegmentsEvent']
 export type EndEvent = Schemas['EndEvent']
+export type TranslationStatus = Schemas['TranslationStatus']
+export type TranslationTarget = TranslationStatus['target']
 
 /** The artifact names the backend accepts for `/runs/{id}/artifacts/{name}`. */
 export type ArtifactName =

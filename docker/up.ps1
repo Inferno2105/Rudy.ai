@@ -29,6 +29,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ''
-Write-Host 'Starting. The first start downloads the language model (~4.7 GB) and,'
+Write-Host 'Starting. The first start downloads the language models (~10 GB) and,'
 Write-Host 'on the first meeting, the speech models (~3 GB); later starts are quick.'
 Write-Host 'Open http://127.0.0.1:8000/   (logs: docker compose logs -f app)'

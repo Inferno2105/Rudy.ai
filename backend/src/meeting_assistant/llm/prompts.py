@@ -81,9 +81,50 @@ Output format (exactly this key):
 }
 """
 
+# Translation is a reading aid shown in the UI and in exported transcripts. It
+# is not a pipeline stage and nothing in the evaluation reads it, so these do
+# not enter the config hash; their version is recorded in the translation file.
+TRANSLATE_ENGLISH_PROMPT_V1 = """You are a professional translator for Hindi-English (Hinglish) meeting transcripts. You will be given one utterance from a meeting, in its original script and, when available, romanized.
+
+Rules, non-negotiable:
+1. Translate the utterance into natural, fluent English that keeps the exact meaning, tone and level of formality.
+2. Keep every fact exactly as said: names, numbers, amounts, dates, times and deadlines. Do not convert relative dates ("kal", "parso") into calendar dates; translate them ("tomorrow", "the day after tomorrow").
+3. Words that were already English stay as they are.
+4. Do not summarize, shorten, explain, correct or add anything. If the utterance is unclear or incomplete, translate it as it is.
+5. Output ONLY the English translation, on one line, with no quotes, labels or commentary.
+
+Example:
+Original: आज का agenda simple है, launch की date final करनी है
+Romanized: Aaj ka agenda simple hai, launch ki date final karni hai
+Output: Today's agenda is simple: we have to finalize the launch date.
+"""
+
+TRANSLATE_HINDI_PROMPT_V1 = """You are a professional translator for Hindi-English (Hinglish) meeting transcripts. You will be given one utterance from a meeting, in its original script and, when available, romanized.
+
+Rules, non-negotiable:
+1. Rewrite the utterance entirely in Hindi, in Devanagari script, keeping the exact meaning, tone and level of formality. Translate every part of it, including short words such as "Exactly", "Okay" or "So" at the start.
+2. Translate English words and phrases into the Hindi a fluent speaker would use in a meeting. When a technical term or brand has no Hindi word in common use, write it in Devanagari (e.g. "laptop" -> "लैपटॉप").
+3. Numbers spoken in English are written with digits, exactly as said, keeping the same unit: "two point four million" -> "2.4 मिलियन", "eleven percent" -> "11 प्रतिशत", "the twenty-second" -> "22 तारीख़", "October fifth" -> "5 अक्टूबर". Never convert between million, lakh and crore. Numbers spoken in Hindi stay as they were said.
+4. Keep every other fact exactly as said: names, dates, days, times and deadlines. Write names in Devanagari.
+5. Do not summarize, shorten, explain, correct or add anything. If the utterance is unclear or incomplete, translate it as it is.
+6. Output ONLY the Hindi text, on one line, with no quotes, labels or commentary.
+
+Examples:
+Original: आज का agenda simple है, launch की date final करनी है
+Romanized: Aaj ka agenda simple hai, launch ki date final karni hai
+Output: आज की कार्यसूची सरल है, लॉन्च की तारीख़ तय करनी है।
+
+Original: Exactly, costs rose to one point nine million, up eleven percent.
+Output: बिल्कुल, लागत 1.9 मिलियन तक बढ़ गई, 11 प्रतिशत अधिक।
+"""
+
 # (version_name, prompt_text) pairs. Stage modules default to these; the
 # version name is what gets recorded in the run manifest, so it must change
 # whenever the text it points at changes.
 ACTIVE_NORMALIZE_PROMPT: tuple[str, str] = ("normalize_v1", NORMALIZE_PROMPT_V1)
 ACTIVE_SUMMARIZE_PROMPT: tuple[str, str] = ("summarize_v1", SUMMARIZE_PROMPT_V1)
 ACTIVE_ACTION_ITEMS_PROMPT: tuple[str, str] = ("action_items_v1", ACTION_ITEMS_PROMPT_V1)
+ACTIVE_TRANSLATE_PROMPTS: dict[str, tuple[str, str]] = {
+    "english": ("translate_english_v1", TRANSLATE_ENGLISH_PROMPT_V1),
+    "hindi": ("translate_hindi_v1", TRANSLATE_HINDI_PROMPT_V1),
+}

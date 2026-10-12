@@ -4,7 +4,15 @@
  * readers pronounce it correctly and Devanagari gets the right font metrics.
  */
 
+import type { TranslationTarget } from '../api/types'
+
 const DEVANAGARI = /[ऀ-ॿ]/
+
+/** The languages a whole transcript can be translated into, by name. */
+export const TARGET_LANGUAGE: Record<TranslationTarget, string> = {
+  english: 'English',
+  hindi: 'Hindi',
+}
 
 export type LanguageTag = 'English' | 'Hindi' | 'Code-Mixed'
 

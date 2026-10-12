@@ -107,6 +107,16 @@ SPEAKER_MIN_EMBED_SEC: float = float(os.environ.get("SPEAKER_MIN_EMBED_SEC", "1.
 OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_HOST: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
+# Full translations of a transcript (a reading aid in the UI and exported PDFs,
+# not a pipeline stage, so not in the config hash). qwen2.5:7b translates into
+# English reliably, but its written Hindi changed facts in testing (a date, a
+# time of day) and invented words; Aya Expanse, built for translation, kept
+# them. Pull it with `ollama pull aya-expanse:8b`.
+TRANSLATION_MODELS: dict[str, str] = {
+    "english": os.environ.get("OLLAMA_TRANSLATE_ENGLISH_MODEL", OLLAMA_MODEL),
+    "hindi": os.environ.get("OLLAMA_TRANSLATE_HINDI_MODEL", "aya-expanse:8b"),
+}
+
 
 # ---------------------------------------------------------------------------
 # Data locations
@@ -315,6 +325,4 @@ def validate_config(
         require_ollama=require_ollama,
     )
     if problems:
-        raise ConfigError(
-            "Configuration problem(s) found:\n  - " + "\n  - ".join(problems)
-        )
+        raise ConfigError("Configuration problem(s) found:\n  - " + "\n  - ".join(problems))

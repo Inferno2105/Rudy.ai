@@ -152,8 +152,14 @@ test('live session: segments stream in, then stop', async ({ page }) => {
   await openApp(page)
   await openNav(page, 'Live')
   // The e2e machine may have no microphone; the stub pipeline does not use one.
-  const start = page.getByRole('button', { name: 'Start recording' })
-  await start.click()
+  await page.getByRole('button', { name: 'Get ready' }).click()
+  await expect(page.getByText('Getting ready…')).toBeVisible()
+  // Nothing records until everything is ready and the user says go.
+  await expect(page.getByText('All systems go')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('The microphone is picking you up.')).toBeVisible({
+    timeout: 10_000,
+  })
+  await page.getByRole('button', { name: 'Start recording' }).click()
   const transcript = page.getByRole('list', { name: 'Live transcript' })
   await expect(transcript.getByText('live chunk 2')).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: 'Stop' }).click()

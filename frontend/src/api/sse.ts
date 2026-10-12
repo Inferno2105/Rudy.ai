@@ -161,3 +161,47 @@ export async function followRunEvents(runId: string, options: FollowOptions): Pr
     await sleep(backoffMs(attempt), signal)
   }
 }
+
+/**
+ * Follow the microphone level of your live session until it ends or the
+ * caller aborts. A dropped connection is retried a few times; levels are
+ * momentary, so nothing is replayed.
+ */
+export async function followMicLevel(options: {
+  signal: AbortSignal
+  onLevel: (level: number) => void
+}): Promise<void> {
+  const { signal, onLevel } = options
+  const url = apiUrl('/api/live/level')
+  for (let attempt = 1; attempt <= 5 && !signal.aborted; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'text/event-stream' },
+        signal,
+        cache: 'no-store',
+      })
+      // No session (yet, or any more): nothing to follow.
+      if (response.status === 404 || response.status === 401) return
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      const parser = new SseParser()
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) return // the session ended
+        for (const message of parser.feed(decoder.decode(value, { stream: true }))) {
+          if (message.event !== 'level') continue
+          try {
+            const { level } = JSON.parse(message.data) as { level: number }
+            onLevel(level)
+          } catch {
+            // A malformed frame is skipped; the next one is a moment away.
+          }
+        }
+      }
+    } catch {
+      if (signal.aborted) return
+    }
+    await sleep(defaultBackoff(attempt), signal)
+  }
+}

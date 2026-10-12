@@ -47,11 +47,22 @@ per-chunk LLM call avoids both duplicating that logic and paying for dozens of
 extra round-trips to a local model during a live meeting. They run after the
 worker has drained and joined, when the main thread has full transcript
 ownership back.
+
+**Ready, then recording.** Loading the models takes a while, and a session
+that records from the moment Start is pressed loses whatever is said before
+the models are loaded and the microphone is open. So the run reports where it
+is in the manifest (``extra.live_phase``): ``loading`` (with the model being
+loaded), ``ready`` once the microphone is open and every model is loaded, and
+``recording`` from the first recorded frame. Given a ``start_event``, it waits
+in ``ready`` -- microphone open, level meter running, nothing recorded -- until
+the speaker chooses to start. A session stopped before it started recorded
+nothing, and its run is removed rather than kept as an empty failure.
 """
 
 from __future__ import annotations
 
 import queue
+import shutil
 import threading
 import time
 from dataclasses import dataclass
@@ -61,6 +72,7 @@ from typing import Any
 
 from meeting_assistant import config
 from meeting_assistant.align.stitch import TranscriptStitcher
+from meeting_assistant.audio.level import LevelMeter
 from meeting_assistant.audio.live_capture import RecordingStats, record_chunks
 from meeting_assistant.audio.vad import DEFAULT_VAD_CONFIG, VadConfig
 from meeting_assistant.diarize.speaker_registry import SpeakerRegistry
@@ -280,11 +292,31 @@ def create_live_run(*, owner: str | None = None) -> RunPaths:
     return paths
 
 
+# How long a prepared session waits for its start before giving up, so a
+# forgotten browser tab does not hold the models (and the GPU) indefinitely.
+READY_TIMEOUT_SEC = 600.0
+
+
+class _Phase:
+    """Writes the session's phase into the manifest, for the Live page."""
+
+    def __init__(self, manifest: RunManifest, steps: list[str]) -> None:
+        self._manifest = manifest
+        self._state: dict[str, Any] = {"phase": "loading", "step": None, "steps": steps}
+
+    def set(self, phase: str, **fields: Any) -> None:
+        self._state = {**self._state, "phase": phase, **fields}
+        self._manifest.set_extra("live_phase", dict(self._state))
+
+
 def run_live(
     opts: LiveOptions | None = None,
     *,
     paths: RunPaths | None = None,
     stop_event: threading.Event | None = None,
+    start_event: threading.Event | None = None,
+    level_meter: LevelMeter | None = None,
+    ready_timeout_sec: float = READY_TIMEOUT_SEC,
 ) -> RunPaths:
     """Record from the microphone and process it incrementally until stopped.
 
@@ -298,6 +330,12 @@ def run_live(
     Args:
         paths: an existing run from :func:`create_live_run`; a new one is
             created when omitted.
+        start_event: when given, the session gets ready (models loaded,
+            microphone open) and then waits, recording nothing, until this is
+            set -- or until ``stop_event`` or ``ready_timeout_sec`` ends it.
+            Without it, recording starts as soon as everything is loaded.
+        level_meter: receives the microphone's loudness from the moment it
+            opens, for a live level meter.
 
     Returns:
         The run's :class:`~meeting_assistant.paths.RunPaths`. Check
@@ -316,6 +354,9 @@ def run_live(
     manifest = RunManifest.load(paths)
     log.info("Run %s started", paths.run_id)
     log_handler = attach_run_log(paths.log_path)
+    steps = ["speech", "speakers"] + (["tracking"] if opts.use_registry else []) + ["microphone"]
+    phase = _Phase(manifest, steps)
+    discard = False
 
     try:
         # Every model loads here, on the main thread, before recording starts
@@ -324,7 +365,9 @@ def run_live(
         from meeting_assistant.asr.whisper_asr import load_model
         from meeting_assistant.diarize.pyannote_diarizer import load_pipeline
 
+        phase.set("loading", step="speech")
         whisper_model = load_model()
+        phase.set("loading", step="speakers")
         diarization_pipeline = load_pipeline(config.HF_TOKEN)
 
         registry: SpeakerRegistry | None = None
@@ -335,6 +378,7 @@ def run_live(
                 load_embedding_model,
             )
 
+            phase.set("loading", step="tracking")
             inference = build_inference(load_embedding_model())
 
             def embedder(audio_path: str | Path, start: float, end: float):
@@ -360,14 +404,34 @@ def run_live(
         def enqueue(chunk_path: Path, offset_sec: float) -> None:
             q.put((chunk_path, offset_sec))
 
+        phase.set("loading", step="microphone")
         recording = record_chunks(
             enqueue,
             paths.chunks_dir,
             vad_config=opts.vad_config,
             device=opts.device,
             stop_event=stop_event,
+            start_event=start_event,
+            start_timeout_sec=ready_timeout_sec,
+            on_listening=(lambda: phase.set("ready", step=None)) if start_event else None,
+            on_recording=lambda: phase.set(
+                "recording",
+                step=None,
+                recording_started_at=datetime.now().isoformat(timespec="milliseconds"),
+            ),
+            level_meter=level_meter,
         )
 
+        if not recording.started:
+            # Stopped (or never started) before recording began: nothing was
+            # recorded, so there is no meeting to keep.
+            q.put(_STOP)
+            worker.join()
+            log.info("Session ended before recording started; removing run %s", paths.run_id)
+            discard = True
+            return paths
+
+        phase.set("finishing")
         q.put(_STOP)
         backlog = q.qsize()
         if backlog > 1:
@@ -410,5 +474,8 @@ def run_live(
 
     finally:
         detach_run_log(log_handler)
+        if discard:
+            # After the log is detached: on Windows an open log file blocks removal.
+            shutil.rmtree(paths.root, ignore_errors=True)
 
     return paths

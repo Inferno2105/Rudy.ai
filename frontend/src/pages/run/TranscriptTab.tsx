@@ -3,21 +3,26 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { isNotFound } from '../../api/client'
-import { useArtifact, useTranscript } from '../../api/queries'
-import type { RunDetail, Segment, StageInfo } from '../../api/types'
+import { useArtifact, useTranscript, useTranslation } from '../../api/queries'
+import type { RunDetail, Segment, StageInfo, TranslationTarget } from '../../api/types'
 import { MeetingPlayer, type MeetingPlayerHandle } from '../../components/MeetingPlayer'
 import { SpeakerTimeline } from '../../components/SpeakerTimeline'
 import { ErrorState, NotProduced } from '../../components/states'
 import { LanguageLegend } from '../../components/status'
 import { Transcript } from '../../components/Transcript'
+import { TranslationProgress } from '../../components/TranslationProgress'
 import { Card, CardBody } from '../../components/ui/card'
 import { Callout, LoadingBlock } from '../../components/ui/feedback'
 import { Input } from '../../components/ui/field'
+import { Segmented, type SegmentedOption } from '../../components/ui/segmented'
+import { TARGET_LANGUAGE } from '../../lib/language'
 import { matchesQuery } from '../../lib/runs'
 import { speakerPalette } from '../../lib/speakers'
-import { cn } from '../../lib/utils'
 
-type Script = 'romanized' | 'original'
+/** `romanized` is the default view: the most processed transcript there is. */
+type Script = 'romanized' | 'original' | TranslationTarget
+/** The chosen view lives in the URL (`?script=english`), so it can be linked. */
+const SCRIPT_PARAM = 'script'
 
 function asSegments(value: unknown): Segment[] | null {
   return Array.isArray(value) ? (value as Segment[]) : null
@@ -28,37 +33,6 @@ const SOURCE_LABEL: Record<string, string> = {
   tagged: 'the transcript in its original script, with language tags',
   merged: 'speaker turns before language tagging',
   aligned: 'speaker-aligned segments before turns were merged',
-}
-
-function ScriptToggle({ value, onChange }: { value: Script; onChange: (s: Script) => void }) {
-  const options = [
-    ['romanized', 'Romanized'],
-    ['original', 'Original script'],
-  ] as const
-  return (
-    <fieldset className="bg-subtle inline-flex rounded-md p-0.5">
-      <legend className="sr-only">Script</legend>
-      {options.map(([option, label]) => (
-        <label
-          key={option}
-          className={cn(
-            'has-[:focus-visible]:outline-ring cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors has-[:focus-visible]:outline-2',
-            value === option ? 'bg-surface text-fg shadow-xs' : 'text-muted hover:text-fg',
-          )}
-        >
-          <input
-            type="radio"
-            name="transcript-script"
-            value={option}
-            checked={value === option}
-            onChange={() => onChange(option)}
-            className="sr-only"
-          />
-          {label}
-        </label>
-      ))}
-    </fieldset>
-  )
 }
 
 export function TranscriptTab({
@@ -72,12 +46,29 @@ export function TranscriptTab({
 }) {
   const transcript = useTranscript(run.run_id)
   const canToggle = run.artifacts.includes('hinglish') && run.artifacts.includes('tagged')
-  const [script, setScript] = useState<Script>('romanized')
+  const isLive = Boolean(liveSegments?.length)
+  const [params, setParams] = useSearchParams()
+  const scriptOptions: SegmentedOption<Script>[] = [
+    ...(canToggle
+      ? [
+          { value: 'romanized' as const, label: 'Romanized' },
+          { value: 'original' as const, label: 'Original script' },
+        ]
+      : [{ value: 'romanized' as const, label: 'As transcribed' }]),
+    { value: 'english', label: 'English' },
+    { value: 'hindi', label: 'Hindi' },
+  ]
+  const requested = params.get(SCRIPT_PARAM)
+  const script: Script =
+    scriptOptions.find((option) => option.value === requested)?.value ?? 'romanized'
+  const target = script === 'english' || script === 'hindi' ? script : null
   const original = useArtifact(run.run_id, 'tagged', canToggle && script === 'original')
+  const translation = useTranslation(run.run_id, target ?? 'english', target != null && !isLive)
+  const translated =
+    target && translation.data?.state === 'ready' ? (translation.data.segments ?? null) : null
   const [query, setQuery] = useState('')
   // A link to a moment (?t=seconds, from search) starts with that line
   // current; the run page remounts this tab when ?t changes.
-  const [params] = useSearchParams()
   const jumpTo = Number.parseFloat(params.get('t') ?? '')
   const [currentTime, setCurrentTime] = useState<number | null>(
     Number.isFinite(jumpTo) ? jumpTo : null,
@@ -87,12 +78,13 @@ export function TranscriptTab({
   const [follow, setFollow] = useState(true)
   const [morphKey, setMorphKey] = useState(0)
 
-  const segments: Segment[] | null =
-    liveSegments && liveSegments.length > 0
-      ? liveSegments
-      : script === 'original' && canToggle
-        ? asSegments(original.data)
-        : (transcript.data?.segments ?? null)
+  // While a translation is being made, the player keeps the transcript's
+  // timing and the list shows the progress instead.
+  const segments: Segment[] | null = isLive
+    ? liveSegments
+    : script === 'original' && canToggle
+      ? asSegments(original.data)
+      : (translated ?? transcript.data?.segments ?? null)
 
   const palette = useMemo(() => speakerPalette((segments ?? []).map((s) => s.speaker)), [segments])
   const visible = useMemo(
@@ -118,6 +110,14 @@ export function TranscriptTab({
   useEffect(() => {
     if (segmentsReady && Number.isFinite(jumpTo)) player.current?.seek(jumpTo, { play: false })
   }, [segmentsReady, jumpTo])
+
+  function changeScript(next: Script) {
+    const updated = new URLSearchParams(params)
+    if (next === 'romanized') updated.delete(SCRIPT_PARAM)
+    else updated.set(SCRIPT_PARAM, next)
+    setParams(updated, { replace: true })
+    setMorphKey((key) => key + 1)
+  }
 
   function seek(seconds: number) {
     setFollow(true)
@@ -150,11 +150,13 @@ export function TranscriptTab({
     )
   }
 
-  const source = liveSegments?.length
+  const source = isLive
     ? 'live'
-    : script === 'original'
-      ? 'tagged'
-      : transcript.data?.source_artifact
+    : target
+      ? null
+      : script === 'original'
+        ? 'tagged'
+        : transcript.data?.source_artifact
 
   return (
     <div className="space-y-4">
@@ -200,20 +202,30 @@ export function TranscriptTab({
               ? `${visible.length} of ${segments.length} segments match`
               : `${segments.length} segment${segments.length === 1 ? '' : 's'}`}
           </span>
-          {canToggle && !liveSegments?.length ? (
-            <ScriptToggle
+          {isLive ? null : (
+            <Segmented
+              name="transcript-script"
+              legend="Transcript language"
               value={script}
-              onChange={(next) => {
-                setScript(next)
-                setMorphKey((key) => key + 1)
-              }}
+              options={scriptOptions}
+              onChange={changeScript}
             />
-          ) : null}
+          )}
         </div>
       </div>
 
       {source && SOURCE_LABEL[source] ? (
         <p className="text-muted text-xs">Showing {SOURCE_LABEL[source]}.</p>
+      ) : null}
+      {target && translated ? (
+        <p className="text-muted text-xs">
+          Showing a machine translation into {TARGET_LANGUAGE[target]} by{' '}
+          <span translate="no">{translation.data?.model}</span>. Passages already in{' '}
+          {TARGET_LANGUAGE[target]} are as spoken; the original script is the authoritative record.
+          {translation.data?.segments_failed
+            ? ` ${translation.data.segments_failed} passage(s) could not be translated and are shown as spoken.`
+            : ''}
+        </p>
       ) : null}
       <LanguageLegend languages={segments.map((segment) => segment.language)} />
       {source === 'live' ? (
@@ -222,7 +234,9 @@ export function TranscriptTab({
 
       <Card>
         <CardBody>
-          {visible.length === 0 ? (
+          {target && !translated ? (
+            <TranslationProgress runId={run.run_id} target={target} autoStart />
+          ) : visible.length === 0 ? (
             <p className="text-muted py-6 text-center text-sm">No segment contains “{query}”.</p>
           ) : (
             <Transcript

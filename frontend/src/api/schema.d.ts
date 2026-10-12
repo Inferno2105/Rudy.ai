@@ -407,6 +407,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/translations/{target}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Translation
+         * @description The transcript translated into English or Hindi, or how far making it has got.
+         */
+        get: operations["get_translation_api_runs__run_id__translations__target__get"];
+        put?: never;
+        /**
+         * Start Translation
+         * @description Translate the transcript with the local language model, in the background.
+         *
+         *     Answers with the current state: a translation that already exists for this
+         *     transcript is returned, not made again, and a request while one is being
+         *     made joins it.
+         */
+        post: operations["start_translation_api_runs__run_id__translations__target__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/transcript.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Transcript Pdf
+         * @description The transcript laid out as a meeting transcript, in one of four versions:
+         *     as spoken, romanized, or translated into English or Hindi (translate first).
+         */
+        get: operations["download_transcript_pdf_api_runs__run_id__transcript_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/summary": {
         parameters: {
             query?: never;
@@ -609,7 +658,10 @@ export interface paths {
         put?: never;
         /**
          * Start Live
-         * @description Start recording from the server's microphone. 409 if a job is busy.
+         * @description Prepare a live session: load the models and open the server's
+         *     microphone. Recording begins with ``POST /api/live/record``; the session's
+         *     progress is in its run's ``extra.live_phase`` (``loading``, ``ready``,
+         *     ``recording``, ``finishing``). 409 if a job is busy.
          */
         post: operations["start_live_api_live_start_post"];
         delete?: never;
@@ -633,6 +685,48 @@ export interface paths {
          *     summary stages, so it stays ``stopping`` for a while before finishing.
          */
         post: operations["stop_live_api_live_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin Recording
+         * @description Start recording in your prepared live session. If it is still getting
+         *     ready, it starts recording the moment it is.
+         */
+        post: operations["begin_recording_api_live_record_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/level": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Level
+         * @description The microphone's loudness, about twelve times a second, for a level
+         *     meter: from the moment the microphone opens until the session ends.
+         */
+        get: operations["stream_level_api_live_level_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -903,7 +997,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "batch" | "resume" | "live";
+            kind: "batch" | "resume" | "live" | "translate";
             /** Run Id */
             run_id: string;
             /**
@@ -919,6 +1013,13 @@ export interface components {
             started_at?: string | null;
             /** Finished At */
             finished_at?: string | null;
+            /**
+             * Target
+             * @description For a translate job, the language it translates into
+             */
+            target?: string | null;
+            /** @description Segments done so far, for jobs that report it */
+            progress?: components["schemas"]["JobProgress"] | null;
         };
         /** JobAccepted */
         JobAccepted: {
@@ -926,6 +1027,13 @@ export interface components {
             job_id: string;
             /** Run Id */
             run_id: string;
+        };
+        /** JobProgress */
+        JobProgress: {
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
         };
         /** LanguageIdMetrics */
         LanguageIdMetrics: {
@@ -1292,6 +1400,49 @@ export interface components {
             /** Segments */
             segments: components["schemas"]["Segment"][];
         };
+        /**
+         * TranslationStatus
+         * @description A full translation of the transcript, or how far making one has got.
+         *
+         *     ``missing`` means none exists for the current transcript (never made, or
+         *     made before the transcript was re-generated); ``POST`` the same path to
+         *     make one. ``segments`` is present only when ``ready``.
+         */
+        TranslationStatus: {
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "english" | "hindi";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "missing" | "queued" | "running" | "ready" | "failed";
+            /**
+             * Done
+             * @description Segments translated so far
+             */
+            done?: number | null;
+            /** Total */
+            total?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Prompt Version */
+            prompt_version?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Segments Failed
+             * @description Segments the model could not translate; shown as spoken
+             * @default 0
+             */
+            segments_failed: number;
+            /** Segments */
+            segments?: components["schemas"]["Segment"][] | null;
+        };
         /** UploadResult */
         UploadResult: {
             /** Name */
@@ -1371,6 +1522,15 @@ export interface components {
         EndEvent: {
             /** Run Id */
             run_id: string;
+        };
+        /**
+         * LevelEvent
+         * @description ``event: level`` on ``GET /api/live/level`` -- the microphone's loudness,
+         *     0 (silence) to 1 (full scale), several times a second.
+         */
+        LevelEvent: {
+            /** Level */
+            level: number;
         };
         /**
          * ManifestEvent
@@ -2020,6 +2180,124 @@ export interface operations {
             };
         };
     };
+    get_translation_api_runs__run_id__translations__target__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target: "english" | "hindi";
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_translation_api_runs__run_id__translations__target__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target: "english" | "hindi";
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationStatus"];
+                };
+            };
+            /** @description The run has no transcript to translate */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_transcript_pdf_api_runs__run_id__transcript_pdf_get: {
+        parameters: {
+            query?: {
+                version?: "original" | "romanized" | "english" | "hindi";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transcript as a PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description The run has no transcript of that kind */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The translation has not been made yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_summary_api_runs__run_id__summary_get: {
         parameters: {
             query?: never;
@@ -2359,6 +2637,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Job"];
                 };
+            };
+        };
+    };
+    begin_recording_api_live_record_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+        };
+    };
+    stream_level_api_live_level_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ``text/event-stream`` of ``level`` events (LevelEvent) while your live session is active */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["LevelEvent"];
+                };
+            };
+            /** @description You have no live session */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

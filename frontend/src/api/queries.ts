@@ -5,8 +5,8 @@
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, ApiError, fetchArtifact, unwrap } from './client'
-import type { ArtifactName } from './types'
+import { api, ApiError, apiUrl, fetchArtifact, unwrap } from './client'
+import type { ArtifactName, TranslationStatus, TranslationTarget } from './types'
 
 export const keys = {
   health: ['health'] as const,
@@ -133,6 +133,53 @@ export function useTranscript(runId: string) {
     queryFn: ({ signal }) =>
       unwrap(api.GET('/api/runs/{run_id}/transcript', { ...runPath(runId), signal })),
   })
+}
+
+const translationKey = (runId: string, target: TranslationTarget) =>
+  keys.runPart(runId, `translation-${target}`)
+
+/** A full translation of the transcript, or how far making one has got. Polls
+ * while the server is translating. */
+export function useTranslation(runId: string, target: TranslationTarget, enabled = true) {
+  return useQuery({
+    queryKey: translationKey(runId, target),
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/api/runs/{run_id}/translations/{target}', {
+          params: { path: { run_id: runId, target } },
+          signal,
+        }),
+      ),
+    enabled,
+    refetchInterval: (query) => (isTranslating(query.state.data) ? 1_500 : false),
+  })
+}
+
+export function isTranslating(status: TranslationStatus | undefined): boolean {
+  return status?.state === 'queued' || status?.state === 'running'
+}
+
+/** Ask the server to translate (it returns an existing translation instead). */
+export function useStartTranslation(runId: string, target: TranslationTarget) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST('/api/runs/{run_id}/translations/{target}', {
+          params: { path: { run_id: runId, target } },
+        }),
+      ),
+    onSuccess: (status) => client.setQueryData(translationKey(runId, target), status),
+  })
+}
+
+export type TranscriptVersion = 'original' | 'romanized' | TranslationTarget
+
+/** The transcript as a PDF. A plain link works: the session cookie goes with it. */
+export function transcriptPdfUrl(runId: string, version: TranscriptVersion): string {
+  return apiUrl(
+    `/api/runs/${encodeURIComponent(runId)}/transcript.pdf?version=${encodeURIComponent(version)}`,
+  )
 }
 
 /** The recording's loudness envelope, for the player's waveform. */
@@ -272,6 +319,13 @@ export function useStartLive() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.currentJob })
     },
+  })
+}
+
+/** Start recording in the prepared live session. */
+export function useBeginRecording() {
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/live/record')),
   })
 }
 

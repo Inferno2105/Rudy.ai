@@ -793,6 +793,180 @@
         }
       }
     },
+    "/api/runs/{run_id}/translations/{target}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Translation",
+        "description": "The transcript translated into English or Hindi, or how far making it has got.",
+        "operationId": "get_translation_api_runs__run_id__translations__target__get",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "english",
+                "hindi"
+              ],
+              "type": "string",
+              "title": "Target"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Start Translation",
+        "description": "Translate the transcript with the local language model, in the background.\n\nAnswers with the current state: a translation that already exists for this\ntranscript is returned, not made again, and a request while one is being\nmade joins it.",
+        "operationId": "start_translation_api_runs__run_id__translations__target__post",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "english",
+                "hindi"
+              ],
+              "type": "string",
+              "title": "Target"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The run has no transcript to translate"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/transcript.pdf": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Download Transcript Pdf",
+        "description": "The transcript laid out as a meeting transcript, in one of four versions:\nas spoken, romanized, or translated into English or Hindi (translate first).",
+        "operationId": "download_transcript_pdf_api_runs__run_id__transcript_pdf_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "original",
+                "romanized",
+                "english",
+                "hindi"
+              ],
+              "type": "string",
+              "default": "original",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The transcript as a PDF",
+            "content": {
+              "application/pdf": {}
+            }
+          },
+          "404": {
+            "description": "The run has no transcript of that kind"
+          },
+          "409": {
+            "description": "The translation has not been made yet"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runs/{run_id}/summary": {
       "get": {
         "tags": [
@@ -1234,7 +1408,7 @@
           "jobs"
         ],
         "summary": "Start Live",
-        "description": "Start recording from the server's microphone. 409 if a job is busy.",
+        "description": "Prepare a live session: load the models and open the server's\nmicrophone. Recording begins with ``POST /api/live/record``; the session's\nprogress is in its run's ``extra.live_phase`` (``loading``, ``ready``,\n``recording``, ``finishing``). 409 if a job is busy.",
         "operationId": "start_live_api_live_start_post",
         "requestBody": {
           "content": {
@@ -1288,6 +1462,53 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/live/record": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Begin Recording",
+        "description": "Start recording in your prepared live session. If it is still getting\nready, it starts recording the moment it is.",
+        "operationId": "begin_recording_api_live_record_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/live/level": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Stream Level",
+        "description": "The microphone's loudness, about twelve times a second, for a level\nmeter: from the moment the microphone opens until the session ends.",
+        "operationId": "stream_level_api_live_level_get",
+        "responses": {
+          "200": {
+            "description": "``text/event-stream`` of ``level`` events (LevelEvent) while your live session is active",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/LevelEvent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "You have no live session"
           }
         }
       }
@@ -2120,7 +2341,8 @@
             "enum": [
               "batch",
               "resume",
-              "live"
+              "live",
+              "translate"
             ],
             "title": "Kind"
           },
@@ -2175,6 +2397,29 @@
               }
             ],
             "title": "Finished At"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "For a translate job, the language it translates into"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobProgress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Segments done so far, for jobs that report it"
           }
         },
         "type": "object",
@@ -2205,6 +2450,24 @@
           "run_id"
         ],
         "title": "JobAccepted"
+      },
+      "JobProgress": {
+        "properties": {
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "done",
+          "total"
+        ],
+        "title": "JobProgress"
       },
       "LanguageIdMetrics": {
         "properties": {
@@ -3126,6 +3389,123 @@
         ],
         "title": "TranscriptResponse"
       },
+      "TranslationStatus": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "english",
+              "hindi"
+            ],
+            "title": "Target"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done",
+            "description": "Segments translated so far"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "segments_failed": {
+            "type": "integer",
+            "title": "Segments Failed",
+            "description": "Segments the model could not translate; shown as spoken",
+            "default": 0
+          },
+          "segments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Segment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target",
+          "state"
+        ],
+        "title": "TranslationStatus",
+        "description": "A full translation of the transcript, or how far making one has got.\n\n``missing`` means none exists for the current transcript (never made, or\nmade before the transcript was re-generated); ``POST`` the same path to\nmake one. ``segments`` is present only when ``ready``."
+      },
       "UploadResult": {
         "properties": {
           "name": {
@@ -3338,6 +3718,22 @@
           "run_id"
         ],
         "title": "EndEvent",
+        "type": "object"
+      },
+      "LevelEvent": {
+        "description": "``event: level`` on ``GET /api/live/level`` -- the microphone's loudness,\n0 (silence) to 1 (full scale), several times a second.",
+        "properties": {
+          "level": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Level",
+            "type": "number"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "LevelEvent",
         "type": "object"
       },
       "ManifestEvent": {

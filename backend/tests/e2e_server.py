@@ -21,6 +21,7 @@ import argparse
 import shutil
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 STAGE_PAUSE_SEC = 0.25
@@ -121,19 +122,51 @@ def stub_batch(audio_path, opts):
     return paths
 
 
-def stub_live(opts, *, paths, stop_event):
+def stub_live(opts, *, paths, stop_event, start_event=None, level_meter=None):
+    """A live session without models or a microphone: a short "load", ready
+    with a moving level meter until started, then a chunk every 0.4 s."""
+    import math
+
+    import numpy as np
+
     from meeting_assistant.io_utils import write_json
     from meeting_assistant.pipeline.manifest import RunManifest
 
     manifest = RunManifest.load(paths)
     manifest.data_origin = "synthetic"
     manifest.save()
+    steps = ["speech", "speakers", "microphone"]
+    for step in steps:
+        manifest.set_extra("live_phase", {"phase": "loading", "step": step, "steps": steps})
+        if stop_event.wait(timeout=0.3):
+            return paths
+
+    def feed_meter(t: int) -> None:
+        if level_meter is not None:
+            amplitude = int(3000 + 2500 * math.sin(t / 3))
+            level_meter.update(np.full(480, amplitude, dtype=np.int16))
+
+    manifest.set_extra("live_phase", {"phase": "ready", "step": None, "steps": steps})
+    tick = 0
+    while start_event is not None and not start_event.wait(timeout=0.05):
+        feed_meter(tick)
+        tick += 1
+        if stop_event.is_set():
+            return paths
+    manifest.set_extra(
+        "live_phase",
+        {"phase": "recording", "step": None, "steps": steps,
+         "recording_started_at": datetime.now().isoformat(timespec="milliseconds")},
+    )
     segments = []
     while not stop_event.wait(timeout=0.4) and len(segments) < 300:
+        feed_meter(tick)
+        tick += 1
         n = len(segments)
         segments.append({"start": float(n), "end": n + 1.0, "speaker": "SPEAKER_G01",
                          "language": "English", "text": f"live chunk {n}"})
         write_json(paths.artifact("tagged"), segments)
+    manifest.set_extra("live_phase", {"phase": "finishing", "step": None, "steps": steps})
     manifest.record_stage("tagged", "ok", seconds=0.1)
     manifest.set_extra("live_stats", {"chunks_recorded": len(segments),
                                       "chunks_processed": len(segments),

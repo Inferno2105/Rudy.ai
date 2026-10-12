@@ -138,7 +138,9 @@ function CurrentJob() {
                 ? 'Live recording'
                 : active.kind === 'resume'
                   ? 'Resuming'
-                  : 'Processing'}
+                  : active.kind === 'translate'
+                    ? 'Translating'
+                    : 'Processing'}
             </span>
           </Link>
         </motion.div>

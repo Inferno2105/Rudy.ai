@@ -123,3 +123,80 @@ def test_a_natural_pause_cuts_a_chunk_with_the_right_offset(tmp_path):
     assert len(chunks) == 2
     assert chunks[0][1] == pytest.approx(0.0)
     assert chunks[1][1] > chunks[0][1]
+
+
+# --- getting ready, then recording -----------------------------------------------
+def _source_starting(script, start_event, *, start_after):
+    """Frames per ``script``; ``start_event`` is set once ``start_after`` have gone by."""
+
+    def frames(_cfg, _device):
+        for i, speech in enumerate(script, start=1):
+            if i > start_after:
+                start_event.set()
+            yield _frame(speech)
+
+    return frames
+
+
+def test_nothing_is_recorded_before_the_start(tmp_path):
+    start = threading.Event()
+    events: list[str] = []
+    chunks = []
+    # Speech while waiting (frames 1-100) must not be recorded; the speech
+    # after the start (frames 151-250) must be, with its offset counted from the start.
+    script = [True] * 100 + [False] * 50 + [True] * 100 + [False] * 60
+    stats = record_chunks(
+        lambda path, offset: chunks.append((path, offset)),
+        tmp_path / "chunks",
+        vad_config=CFG,
+        start_event=start,
+        on_listening=lambda: events.append("listening"),
+        on_recording=lambda: events.append("recording"),
+        frame_source=_source_starting(script, start, start_after=120),
+    )
+    assert events == ["listening", "recording"]
+    assert stats.started
+    assert len(chunks) == 1
+    # Counted from the start (frame 121), not from when the microphone opened:
+    # the speech begins 30 frames (0.9 s) after the start, 150 frames after opening.
+    assert chunks[0][1] < 30 * FRAME_SEC
+
+
+def test_a_session_that_never_starts_records_nothing(tmp_path):
+    start = threading.Event()
+    chunks = []
+    stats = record_chunks(
+        lambda path, offset: chunks.append(path),
+        tmp_path / "chunks",
+        vad_config=CFG,
+        start_event=start,
+        start_timeout_sec=0.0,
+        frame_source=_source([True] * 100),
+    )
+    assert not stats.started
+    assert chunks == []
+    assert stats.session_duration_sec == 0.0
+
+
+def test_the_level_meter_runs_while_waiting(tmp_path):
+    from meeting_assistant.audio.level import LevelMeter
+
+    start, stop = threading.Event(), threading.Event()
+    meter = LevelMeter(window_sec=60)
+
+    def loud(_cfg, _device):
+        for i in range(20):
+            if i == 10:
+                stop.set()
+            yield np.full(CFG.frame_size, 20000, dtype=np.int16)
+
+    record_chunks(
+        lambda path, offset: None,
+        tmp_path / "chunks",
+        vad_config=CFG,
+        start_event=start,
+        stop_event=stop,
+        level_meter=meter,
+        frame_source=loud,
+    )
+    assert meter.read() > 0.5

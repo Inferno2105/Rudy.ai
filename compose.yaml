@@ -67,13 +67,16 @@ services:
       retries: 12
     restart: unless-stopped
 
-  # One-shot: downloads the language model into the ollama volume (first start
-  # only; later starts finish in a second because it is already there).
+  # One-shot: downloads the language models into the ollama volume (first start
+  # only; later starts finish in a second because they are already there): the
+  # pipeline's model, and the one that translates transcripts into Hindi.
   ollama-model:
     image: ollama/ollama:latest
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:7b}"]
+      PIPELINE_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      HINDI_MODEL: ${OLLAMA_TRANSLATE_HINDI_MODEL:-aya-expanse:8b}
+    entrypoint: ["sh", "-c", "ollama pull \"$$PIPELINE_MODEL\" && ollama pull \"$$HINDI_MODEL\""]
     depends_on:
       ollama:
         condition: service_healthy

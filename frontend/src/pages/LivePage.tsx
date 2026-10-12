@@ -1,4 +1,4 @@
-import { ArrowDown, CircleStop, ExternalLink, Mic } from 'lucide-react'
+import { ArrowDown, Check, CircleStop, ExternalLink, LoaderCircle, Mic, X } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -10,10 +10,18 @@ import {
 } from 'react'
 import { Link } from 'react-router'
 
-import { useCurrentJob, useDevices, useStartLive, useStopLive } from '../api/queries'
+import {
+  useBeginRecording,
+  useCurrentJob,
+  useDevices,
+  useStartLive,
+  useStopLive,
+} from '../api/queries'
 import { isJobActive } from '../api/types'
+import { useMicLevel } from '../api/useMicLevel'
 import { useRunEvents } from '../api/useRunEvents'
 import { PageHeader } from '../components/AppShell'
+import { LevelMeter } from '../components/LevelMeter'
 import { ErrorState } from '../components/states'
 import { JobStateBadge } from '../components/status'
 import { Transcript } from '../components/Transcript'
@@ -22,14 +30,22 @@ import { Card, CardBody, CardHeader } from '../components/ui/card'
 import { Callout, EmptyState, LoadingBlock } from '../components/ui/feedback'
 import { Field, Input, Select, Switch } from '../components/ui/field'
 import { formatClock, formatFixed, NBSP, plural } from '../lib/format'
+import { levelHint } from '../lib/level'
 import { speakerPalette } from '../lib/speakers'
 import { cn, useDocumentTitle } from '../lib/utils'
 import { Waveform } from '../components/visuals'
 
-/** The record button's visual: a glowing orb with rings that pulse while recording. */
-function RecordOrb({ active }: { active: boolean }) {
+type OrbState = 'idle' | 'preparing' | 'recording'
+
+/** The record button's visual: a glowing orb, a turning ring while the session
+ * gets ready, and rings that pulse while recording. */
+function RecordOrb({ state }: { state: OrbState }) {
+  const active = state === 'recording'
   return (
     <div aria-hidden className="relative grid size-24 shrink-0 place-items-center">
+      {state === 'preparing' ? (
+        <span className="border-accent/25 border-t-accent absolute inset-0 animate-spin rounded-full border-[3px] motion-reduce:animate-none" />
+      ) : null}
       {active ? (
         <>
           <span className="bg-danger/40 animate-ring absolute inset-0 rounded-full" />
@@ -92,12 +108,12 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
   return (
     <Card className="max-w-xl">
       <div className="flex justify-center pt-8">
-        <RecordOrb active={false} />
+        <RecordOrb state="idle" />
       </div>
       <CardHeader
         className="border-0 pb-0 text-center [&>div]:mx-auto"
         title="Start a live session"
-        description="Records from the server's microphone and transcribes as you speak."
+        description="Loads the models and opens the server's microphone first; you start recording once everything is ready."
       />
       <CardBody>
         <form onSubmit={submit} className="space-y-5">
@@ -160,9 +176,155 @@ function StartForm({ onStarted }: { onStarted: (runId: string) => void }) {
             </Callout>
           ) : null}
           <Button type="submit" variant="primary" disabled={start.isPending}>
-            <Mic aria-hidden /> {start.isPending ? 'Starting…' : 'Start recording'}
+            <Mic aria-hidden /> {start.isPending ? 'Starting…' : 'Get ready'}
           </Button>
         </form>
+      </CardBody>
+    </Card>
+  )
+}
+
+/** Where a live session is, from its run's `extra.live_phase`. */
+interface LivePhase {
+  phase?: 'loading' | 'ready' | 'recording' | 'finishing'
+  step?: string | null
+  steps?: string[]
+  recording_started_at?: string
+}
+
+const STEP_LABEL: Record<string, string> = {
+  speech: 'Speech recognition model',
+  speakers: 'Speaker separation model',
+  tracking: 'Speaker tracking model',
+  microphone: 'Microphone',
+}
+
+const DEFAULT_STEPS = ['speech', 'speakers', 'microphone']
+
+type StepState = 'done' | 'active' | 'pending'
+
+function stepStates(phase: LivePhase | undefined): [string, StepState][] {
+  const steps = phase?.steps ?? DEFAULT_STEPS
+  if (phase?.phase && phase.phase !== 'loading') return steps.map((s) => [s, 'done'])
+  const current = phase?.step ? steps.indexOf(phase.step) : -1
+  return steps.map((step, i) => [step, i < current ? 'done' : i === current ? 'active' : 'pending'])
+}
+
+/** Getting ready (models loading, microphone opening), then waiting for the go. */
+function PrepareCard({
+  phase,
+  queued,
+  levels,
+  starting,
+  cancelling,
+  onStart,
+  onCancel,
+}: {
+  phase: LivePhase | undefined
+  queued: boolean
+  levels: number[]
+  starting: boolean
+  cancelling: boolean
+  onStart: () => void
+  onCancel: () => void
+}) {
+  const ready = phase?.phase === 'ready'
+  const hint = levelHint(levels)
+  const startButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (ready) startButton.current?.focus()
+  }, [ready])
+
+  return (
+    <Card className="relative mx-auto max-w-xl overflow-hidden">
+      <div
+        aria-hidden
+        className="bg-brand pointer-events-none absolute -top-28 left-1/3 size-80 rounded-full opacity-15 blur-3xl"
+      />
+      <div className="relative flex justify-center pt-8">
+        <RecordOrb state={ready ? 'idle' : 'preparing'} />
+      </div>
+      <CardHeader
+        className="relative border-0 pb-0 text-center [&>div]:mx-auto"
+        title={cancelling ? 'Cancelling…' : ready ? 'All systems go' : 'Getting ready…'}
+        description={
+          ready
+            ? 'Everything is loaded and the microphone is open. Nothing is being recorded yet.'
+            : queued
+              ? 'Waiting for the server to finish another job first.'
+              : 'Loading the models and opening the microphone, so no words are lost once you start.'
+        }
+      />
+      <CardBody className="relative space-y-6">
+        <ol className="space-y-2.5" aria-label="Preparation">
+          {stepStates(phase).map(([step, state]) => (
+            <li key={step} className="flex items-center gap-3 text-sm">
+              <span
+                className={cn(
+                  'grid size-6 shrink-0 place-items-center rounded-full',
+                  state === 'done' && 'bg-success/15 text-success',
+                  state === 'active' && 'bg-accent/15 text-accent',
+                  state === 'pending' && 'bg-subtle text-faint',
+                )}
+              >
+                {state === 'done' ? (
+                  <Check className="size-3.5" aria-hidden />
+                ) : state === 'active' ? (
+                  <LoaderCircle
+                    className="size-3.5 animate-spin motion-reduce:animate-none"
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-current" aria-hidden />
+                )}
+              </span>
+              <span className={state === 'pending' ? 'text-muted' : 'text-fg'}>
+                {STEP_LABEL[step] ?? step}
+              </span>
+              <span className="sr-only">
+                {state === 'done' ? 'ready' : state === 'active' ? 'loading' : 'waiting'}
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        {ready ? (
+          <div className="space-y-2">
+            <p className="text-muted text-xs font-semibold tracking-[0.18em] uppercase">
+              Microphone check
+            </p>
+            <LevelMeter history={levels} />
+            <p
+              className={cn(
+                'text-sm',
+                hint.tone === 'ok' && 'text-success',
+                hint.tone === 'warn' && 'text-warning',
+                hint.tone === 'muted' && 'text-muted',
+              )}
+            >
+              {hint.text}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap justify-center gap-3">
+          {ready ? (
+            <Button
+              ref={startButton}
+              variant="primary"
+              onClick={onStart}
+              disabled={starting || cancelling}
+            >
+              <Mic aria-hidden /> {starting ? 'Starting…' : 'Start recording'}
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={onCancel} disabled={cancelling}>
+            <X aria-hidden /> Cancel
+          </Button>
+        </div>
+        <p className="sr-only" aria-live="polite">
+          {ready ? 'Ready to record.' : ''}
+        </p>
       </CardBody>
     </Card>
   )
@@ -179,11 +341,25 @@ interface LiveStats {
 function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
   const events = useRunEvents(runId, true)
   const stop = useStopLive()
+  const begin = useBeginRecording()
   const job = events.job
-  const running = job?.state === 'running'
+  const phase = events.manifest?.extra?.live_phase as LivePhase | undefined
+  const recorded = phase?.phase === 'recording' || phase?.phase === 'finishing'
+  const recording = phase?.phase === 'recording' && job?.state === 'running'
   const stopping = job?.state === 'stopping' || stop.isPending
-  const elapsed = useElapsed(job?.started_at, running)
+  const elapsed = useElapsed(phase?.recording_started_at, recording)
   const stats = (events.manifest?.extra?.live_stats ?? null) as LiveStats | null
+  const finished = events.ended
+  const failed = job?.state === 'failed'
+  // The meter runs from the moment the microphone opens until recording stops.
+  const metering = !finished && (phase?.phase === 'ready' || recording)
+  const levels = useMicLevel(metering)
+
+  // Cancelled before recording: nothing was kept, so go back to the start form.
+  const [cancelled, setCancelled] = useState(false)
+  useEffect(() => {
+    if (cancelled && finished) onReset()
+  }, [cancelled, finished, onReset])
 
   const palette = useMemo(
     () => speakerPalette(events.segments.map((s) => s.speaker)),
@@ -206,8 +382,38 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
     if (pinned && segmentCount > 0 && element) element.scrollTop = element.scrollHeight
   }, [segmentCount, pinned])
 
-  const finished = events.ended
-  const failed = job?.state === 'failed'
+  if (!recorded && !finished) {
+    return (
+      <PrepareCard
+        phase={phase}
+        queued={job?.state === 'queued'}
+        levels={levels}
+        starting={begin.isPending || begin.isSuccess}
+        cancelling={cancelled}
+        onStart={() => begin.mutate()}
+        onCancel={() => {
+          setCancelled(true)
+          stop.mutate()
+        }}
+      />
+    )
+  }
+
+  if (!recorded && finished && !cancelled) {
+    return (
+      <Card className="mx-auto max-w-xl">
+        <EmptyState
+          icon={<Mic />}
+          title="The session ended before recording started"
+          action={<Button onClick={onReset}>New session</Button>}
+        >
+          {failed
+            ? (job?.error ?? `It stopped without saying why. Check data/runs/${runId}/run.log.`)
+            : 'Nothing was recorded, so nothing was kept. It waited too long for a start, or was stopped.'}
+        </EmptyState>
+      </Card>
+    )
+  }
 
   return (
     <>
@@ -217,7 +423,7 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
           className="bg-brand pointer-events-none absolute -top-28 left-1/3 size-80 rounded-full opacity-20 blur-3xl"
         />
         <div className="relative flex flex-col items-center gap-6 sm:flex-row">
-          <RecordOrb active={running} />
+          <RecordOrb state={recording ? 'recording' : 'idle'} />
           <div className="min-w-0 text-center sm:text-left">
             <p className="text-muted text-xs font-semibold tracking-[0.18em] uppercase">Elapsed</p>
             <p
@@ -227,7 +433,11 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
               {elapsed != null ? formatClock(elapsed) : '0:00'}
             </p>
           </div>
-          <Waveform active={running} className="w-full sm:ml-auto sm:max-w-sm" />
+          {recording ? (
+            <LevelMeter history={levels} className="w-full sm:ml-auto sm:max-w-sm" />
+          ) : (
+            <Waveform active={false} className="w-full sm:ml-auto sm:max-w-sm" />
+          )}
         </div>
       </Card>
       <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
@@ -235,7 +445,7 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
           <CardHeader
             title={
               <span className="flex items-center gap-2">
-                {running ? (
+                {recording ? (
                   <span className="relative flex size-2.5" aria-hidden>
                     <span className="bg-danger absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none" />
                     <span className="bg-danger relative inline-flex size-2.5 rounded-full" />
@@ -266,7 +476,7 @@ function Session({ runId, onReset }: { runId: string; onReset: () => void }) {
                   variant="danger"
                   size="sm"
                   onClick={() => stop.mutate()}
-                  disabled={!running || stop.isPending}
+                  disabled={!recording || stop.isPending}
                 >
                   <CircleStop aria-hidden /> Stop
                 </Button>

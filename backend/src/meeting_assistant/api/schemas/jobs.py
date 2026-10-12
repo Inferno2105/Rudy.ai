@@ -6,8 +6,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-JobKind = Literal["batch", "resume", "live"]
+JobKind = Literal["batch", "resume", "live", "translate"]
 JobState = Literal["queued", "running", "stopping", "finished", "failed"]
+
+
+class JobProgress(BaseModel):
+    done: int
+    total: int
 
 
 class Job(BaseModel):
@@ -22,6 +27,12 @@ class Job(BaseModel):
     submitted_at: str
     started_at: str | None = None
     finished_at: str | None = None
+    target: str | None = Field(
+        default=None, description="For a translate job, the language it translates into"
+    )
+    progress: JobProgress | None = Field(
+        default=None, description="Segments done so far, for jobs that report it"
+    )
 
 
 class JobAccepted(BaseModel):
