@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Meeting Assistant: the web UI and API in one image, GPU-capable.
+# RuDy.ai: the web UI and API in one image, GPU-capable.
 #
 #   Stage "ui"  builds the React frontend (node).
 #   Stage "app" is the Python runtime: CUDA-enabled torch, faster-whisper,
@@ -74,7 +74,7 @@ ARG GIT_BRANCH=
 ENV MEETING_ASSISTANT_GIT_COMMIT=${GIT_COMMIT} \
     MEETING_ASSISTANT_GIT_DIRTY=${GIT_DIRTY} \
     MEETING_ASSISTANT_GIT_BRANCH=${GIT_BRANCH}
-LABEL org.opencontainers.image.title="Meeting Assistant" \
+LABEL org.opencontainers.image.title="RuDy.ai" \
       org.opencontainers.image.revision="${GIT_COMMIT}"
 
 # Data (recordings, runs, accounts) and model downloads live in volumes.

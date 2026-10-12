@@ -1,4 +1,4 @@
-"""Local multilingual (Hindi-English) meeting assistant.
+"""RuDy.ai: a local multilingual (Hindi-English) meeting assistant.
 
 Importing this package must stay cheap. It deliberately exposes nothing but
 ``__version__``, and in particular must never pull in ``pyannote.audio``,

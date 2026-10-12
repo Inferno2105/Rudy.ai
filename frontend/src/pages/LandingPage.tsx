@@ -56,7 +56,7 @@ function TopBar() {
         <Link to="/" className="flex items-center gap-2.5 rounded-lg">
           <BrandMark />
           <span className="font-display text-fg font-semibold" translate="no">
-            Meeting Assistant
+            RuDy.ai
           </span>
         </Link>
         <nav aria-label="Sections" className="hidden items-center gap-6 text-sm md:flex">
@@ -451,7 +451,7 @@ export function LandingPage() {
       <footer className="border-border border-t">
         <div className="text-faint mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-sm">
           <span className="flex items-center gap-2">
-            <BrandMark className="size-6" /> Meeting Assistant
+            <BrandMark className="size-6" /> RuDy.ai
           </span>
           <span>A final-year capstone · Hindi–English meeting intelligence</span>
         </div>

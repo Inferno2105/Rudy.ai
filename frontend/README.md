@@ -1,6 +1,6 @@
 # Frontend
 
-The web UI for the meeting assistant: React 19 + Vite + TypeScript, Tailwind CSS
+The web UI for RuDy.ai: React 19 + Vite + TypeScript, Tailwind CSS
 and Radix primitives, talking to the FastAPI backend under `/api`.
 
 In production the backend serves the built UI itself (`meeting-assistant serve`

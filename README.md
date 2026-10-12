@@ -1,6 +1,6 @@
-# Multilingual Meeting Assistant
+# RuDy.ai
 
-A local, offline meeting assistant for **Hindi-English code-mixed (Hinglish)**
+RuDy.ai is a local, offline meeting assistant for **Hindi-English code-mixed (Hinglish)**
 meetings. It transcribes speech, works out who spoke when, tags the language of
 each segment, rewrites Devanagari into Roman-script Hinglish, then produces a
 summary, action items and speaker statistics — all on one machine, with no audio

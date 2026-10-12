@@ -213,7 +213,9 @@ export function LoginPage({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
         <div className="relative flex h-full flex-col justify-between p-10">
           <div className="flex items-center gap-3">
             <BrandMark />
-            <span className="font-display text-fg text-lg font-semibold">Meeting Assistant</span>
+            <span className="font-display text-fg text-lg font-semibold" translate="no">
+              RuDy.ai
+            </span>
           </div>
           <motion.blockquote
             initial={{ opacity: 0, y: 16 }}

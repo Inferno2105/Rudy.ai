@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "meeting-assistant"
 version = "0.1.0"
-description = "Local multilingual (Hindi-English) meeting assistant: ASR, diarization, Hinglish normalization, summarization and evaluation"
+description = "RuDy.ai: local multilingual (Hindi-English) meeting assistant: ASR, diarization, Hinglish normalization, summarization and evaluation"
 # No `readme` field: the project README lives at the repo root, and setuptools
 # refuses to read files outside the package directory. See ../README.md.
 requires-python = ">=3.12,<3.13"
@@ -59,6 +59,7 @@ dev = [
 
 [project.scripts]
 meeting-assistant = "meeting_assistant.cli.main:main"
+rudy = "meeting_assistant.cli.main:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

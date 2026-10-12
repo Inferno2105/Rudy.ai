@@ -1,4 +1,4 @@
-# Meeting Assistant on Docker: the app (UI + API) and Ollama, both on the GPU.
+# RuDy.ai on Docker: the app (UI + API) and Ollama, both on the GPU.
 #
 #   Start:   powershell -File docker/up.ps1      (records the git commit, then up)
 #   Logs:    docker compose logs -f app

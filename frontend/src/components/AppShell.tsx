@@ -194,9 +194,9 @@ function Brand() {
     <Link to="/meetings" className="flex items-center gap-2.5 rounded-lg">
       <BrandMark />
       <span className="font-display text-fg leading-tight font-semibold" translate="no">
-        Meeting
+        RuDy.ai
         <br />
-        <span className="text-muted text-sm font-medium">Assistant</span>
+        <span className="text-muted text-sm font-medium">Meeting assistant</span>
       </span>
     </Link>
   )

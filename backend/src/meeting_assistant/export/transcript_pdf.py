@@ -206,7 +206,7 @@ class _TranscriptPDF(FPDF):
         self.set_fallback_fonts(["Deva"], exact_match=False)
         self.set_text_shaping(True)
         self.set_title(f"{title} — transcript ({version_label})")
-        self.set_creator("Meeting Assistant")
+        self.set_creator("RuDy.ai")
 
     def header(self) -> None:
         if self.page_no() == 1:
@@ -435,7 +435,7 @@ def render_transcript_pdf(paths: RunPaths, version: Version) -> tuple[bytes, str
         title=name,
         version_label=label,
         footer_note=(
-            f"Generated {generated:%d %b %Y %H:%M} by Meeting Assistant · run {paths.run_id}"
+            f"Generated {generated:%d %b %Y %H:%M} by RuDy.ai · run {paths.run_id}"
         ),
     )
     pdf.add_page()

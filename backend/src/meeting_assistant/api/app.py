@@ -159,10 +159,10 @@ def create_app(
             app.state.jobs.shutdown()
 
     app = FastAPI(
-        title="Meeting Assistant API",
+        title="RuDy.ai API",
         version=__version__,
-        description="Local Hindi-English meeting assistant: runs, transcripts, summaries, "
-        "action items, live recording and evaluation. Sign in with a session cookie "
+        description="RuDy.ai, a local Hindi-English meeting assistant: runs, transcripts, "
+        "summaries, action items, live recording and evaluation. Sign in with a session cookie "
         "(`/api/auth/login`); each account sees only its own runs and recordings.",
         lifespan=lifespan,
     )

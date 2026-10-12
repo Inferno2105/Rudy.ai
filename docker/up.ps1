@@ -1,4 +1,4 @@
-# Build (if needed) and start Meeting Assistant in Docker.
+# Build (if needed) and start RuDy.ai in Docker.
 #
 #   powershell -File docker/up.ps1            # build + start in the background
 #   powershell -File docker/up.ps1 -Rebuild   # force a fresh build of the app image

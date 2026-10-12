@@ -160,7 +160,7 @@ def _check_data_dirs() -> Check:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Report on every prerequisite, then summarise."""
-    print(f"meeting-assistant {__version__}")
+    print(f"RuDy.ai (meeting-assistant) {__version__}")
     print(f"repo root: {config.REPO_ROOT}\n")
 
     checks = [
@@ -716,9 +716,9 @@ def cmd_reindex(args: argparse.Namespace) -> int:  # noqa: ARG001 -- argparse na
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="meeting-assistant",
-        description="Local multilingual (Hindi-English) meeting assistant.",
+        description="RuDy.ai: local multilingual (Hindi-English) meeting assistant.",
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--version", action="version", version=f"RuDy.ai {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     parser.add_argument("-q", "--quiet", action="store_true", help="warnings and errors only")
 

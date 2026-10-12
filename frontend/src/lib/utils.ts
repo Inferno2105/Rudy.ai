@@ -10,6 +10,6 @@ export function cn(...inputs: ClassValue[]): string {
 /** Set the tab title for a page. */
 export function useDocumentTitle(title: string | null | undefined): void {
   useEffect(() => {
-    document.title = title ? `${title} · Meeting Assistant` : 'Meeting Assistant'
+    document.title = title ? `${title} · RuDy.ai` : 'RuDy.ai'
   }, [title])
 }
