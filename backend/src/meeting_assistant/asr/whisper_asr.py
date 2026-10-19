@@ -100,6 +100,8 @@ def transcribe_audio(
     beam_size: int = 5,
     vad_filter: bool = True,
     initial_prompt: str | None = None,
+    condition_on_previous_text: bool | None = None,
+    multilingual: bool | None = None,
 ) -> TranscriptionResult:
     """Transcribe one audio file into timestamped segments.
 
@@ -118,6 +120,10 @@ def transcribe_audio(
             decoder as context. Not used by default; noted here because it was
             considered as an accuracy lever during exploration and is a
             reasonable ablation to test explicitly rather than bake in silently.
+        condition_on_previous_text, multilingual: faster-whisper decoding
+            options; ``None`` takes ``config.WHISPER_CONDITION_ON_PREVIOUS`` /
+            ``config.WHISPER_MULTILINGUAL`` (see ``config.py`` for why they
+            matter on long code-mixed conversations).
 
     Returns:
         A :class:`TranscriptionResult`. Empty-text segments are dropped —
@@ -135,6 +141,12 @@ def transcribe_audio(
         beam_size=beam_size,
         vad_filter=vad_filter,
         initial_prompt=initial_prompt,
+        condition_on_previous_text=(
+            config.WHISPER_CONDITION_ON_PREVIOUS
+            if condition_on_previous_text is None
+            else condition_on_previous_text
+        ),
+        multilingual=config.WHISPER_MULTILINGUAL if multilingual is None else multilingual,
     )
 
     segments: list[dict[str, Any]] = []

@@ -333,6 +333,19 @@ def _clip_source(manifest) -> dict:
     }
 
 
+def _run_started(manifest):
+    """When a run started, as an aware datetime. Older manifests recorded a
+    naive local time; they are read as this machine's local time."""
+    from datetime import datetime
+
+    stamp = manifest.provenance_block.get("captured_at")
+    try:
+        started = datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return datetime.min.astimezone()
+    return started if started.tzinfo else started.astimezone()
+
+
 RECORDED_SET = "recorded"
 SYNTHETIC_SET = "synthetic"
 
@@ -343,9 +356,11 @@ def _clip_set(clip_dir, data_origin: str) -> str:
     own recordings. Sets are aggregated apart and never mixed."""
     from meeting_assistant.evaluation.references import read_meta
 
-    dataset = read_meta(clip_dir).get("dataset")
-    if dataset:
-        return str(dataset)
+    meta = read_meta(clip_dir)
+    if meta.get("dataset"):
+        # A corpus's tuning split (settings were chosen on it) is its own set.
+        tune = meta.get("split") == "tune"
+        return f"{meta['dataset']}:tune" if tune else str(meta["dataset"])
     return SYNTHETIC_SET if data_origin != "real_audio" else RECORDED_SET
 
 
@@ -477,10 +492,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
     # scored, but aggregated apart from real recordings, never mixed in.
     runs_by_source = {}
     passed_over: dict[str, list[str]] = {}
-    for run in paths_mod.list_runs():  # newest first
-        if not run.manifest_path.exists():
-            continue
-        manifest = RunManifest.load(run)
+    # Newest first by when each run started, not by its folder name: a run id
+    # carries the clock of the machine that made it, and a container's (UTC)
+    # differs from the host's.
+    manifests = [RunManifest.load(run) for run in paths_mod.list_runs()
+                 if run.manifest_path.exists()]
+    for manifest in sorted(manifests, key=_run_started, reverse=True):
+        run = manifest.paths
         input_name = (manifest.provenance_block.get("input") or {}).get("name")
         if not input_name or input_name in runs_by_source:
             continue

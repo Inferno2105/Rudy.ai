@@ -47,3 +47,45 @@ def test_manifest_dict_has_the_reportable_fields():
     assert manifest["segments"] == 1
     assert manifest["detected_language"] == "hi"
     assert manifest["realtime_factor"] == pytest.approx(1.315)
+
+
+class _FakeModel:
+    """Records what transcribe_audio asks faster-whisper for."""
+
+    def __init__(self):
+        self.kwargs = None
+
+    def transcribe(self, path, **kwargs):
+        from types import SimpleNamespace
+
+        self.kwargs = kwargs
+        segment = SimpleNamespace(start=0.0, end=1.0, text=" hello ")
+        return iter([segment]), SimpleNamespace(language="en", language_probability=0.9,
+                                                duration=1.0)
+
+
+def test_decoding_options_come_from_config_unless_given(monkeypatch):
+    from meeting_assistant import config
+    from meeting_assistant.asr.whisper_asr import transcribe_audio
+
+    model = _FakeModel()
+    monkeypatch.setattr(config, "WHISPER_CONDITION_ON_PREVIOUS", False)
+    monkeypatch.setattr(config, "WHISPER_MULTILINGUAL", True)
+    transcribe_audio(model, "a.wav")
+    assert model.kwargs["condition_on_previous_text"] is False
+    assert model.kwargs["multilingual"] is True
+
+    transcribe_audio(model, "a.wav", condition_on_previous_text=True, multilingual=False)
+    assert model.kwargs["condition_on_previous_text"] is True
+    assert model.kwargs["multilingual"] is False
+
+
+def test_decoding_options_change_the_config_hash_only_off_their_defaults(monkeypatch):
+    from meeting_assistant import config, provenance
+
+    baseline = provenance.config_hash()
+    assert "whisper_multilingual" not in config.output_affecting_settings()
+    monkeypatch.setattr(config, "WHISPER_MULTILINGUAL", True)
+    with_multilingual = provenance.config_hash()
+    monkeypatch.setattr(config, "WHISPER_CONDITION_ON_PREVIOUS", False)
+    assert len({baseline, with_multilingual, provenance.config_hash()}) == 3

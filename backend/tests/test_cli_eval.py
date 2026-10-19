@@ -310,3 +310,38 @@ def test_cmd_eval_reports_a_published_corpus_as_its_own_set(tmp_path, monkeypatc
     assert report["aggregate"]["num_clips"] == 1
     assert report["aggregate_external"]["displace2023-dev"]["num_clips"] == 1
     assert "1 recorded, 0 synthetic, 1 displace2023-dev" in capsys.readouterr().out
+
+
+def test_cmd_eval_takes_the_run_that_started_last_not_the_last_folder_name(tmp_path, monkeypatch):
+    """A container stamps run ids in UTC and the host in local time, so a
+    newer GPU run can sort before an older native run by folder name."""
+    import meeting_assistant.paths as paths_mod
+    from meeting_assistant.io_utils import read_json
+
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    _write_reference_clip(tmp_path / "eval" / "references" / "clip01")
+    runs = {}
+    for run_id, started in (
+        ("20261019-134216_batch_clip01", "2026-10-19T13:42:16+05:30"),  # native, older
+        ("20261019-085810_batch_clip01", "2026-10-19T08:58:10+00:00"),  # container, newer
+    ):
+        monkeypatch.setattr(paths_mod, "make_run_id", lambda *a, run_id=run_id, **k: run_id)
+        run = _write_completed_run(tmp_path / "runs", "clip01.wav")
+        manifest = RunManifest.load(run)
+        manifest.provenance_block["captured_at"] = started
+        manifest.save()
+        runs[run_id] = run
+
+    assert cmd_eval(argparse_namespace()) == 0
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+    assert report["clips"][0]["source"]["run_id"] == "20261019-085810_batch_clip01"
+
+
+def test_run_timestamps_carry_their_utc_offset():
+    from datetime import datetime
+
+    from meeting_assistant import provenance
+
+    stamp = provenance.capture()["captured_at"]
+    assert datetime.fromisoformat(stamp).tzinfo is not None

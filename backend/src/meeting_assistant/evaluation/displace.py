@@ -22,8 +22,9 @@ session becomes an ordinary reference clip, ``displace-<session>``, that
 ``turns.rttm``         One turn per speech segment, speaker ``S1``, ``S2``, ...
 ``languages.txt``      One ``start<TAB>end<TAB>Hindi|English`` line per segment.
                        Segments of different speakers may overlap in time.
-``meta.json``          ``dataset``, the session, speaker count, licence terms
-                       and what the import left out, and why.
+``meta.json``          ``dataset``, the session, its ``split`` (``tune`` for
+                       :data:`TUNING_SESSIONS`, else ``test``), speaker count,
+                       licence terms and what the import left out, and why.
 =====================  ========================================================
 
 Policy, applied identically to every session and stated so the paper can cite
@@ -82,6 +83,13 @@ LICENSE = (
     "DISPLACE challenge terms and conditions: research use with citation; "
     "the audio and annotations must not be redistributed."
 )
+
+# Sessions held out for choosing settings (decoding options and the like).
+# Fixed before any setting was compared, to cover the corpus's spread: one
+# balanced (M030), one English-dominant with four speakers (B022), one
+# Hindi-dominant (M020). They are reported as their own set and never in the
+# DISPLACE results, so no reported number comes from data a choice was made on.
+TUNING_SESSIONS = frozenset({"M030", "B022", "M020"})
 
 # Speech in a language other than Hindi or English, as a share of a session's
 # labelled speech, above which the session is not a Hindi-English one.
@@ -270,6 +278,7 @@ def write_clip(session: Session, references_dir: Path, duration: float | None = 
         {
             "dataset": DATASET,
             "session": session.session_id,
+            "split": "tune" if session.session_id in TUNING_SESSIONS else "test",
             "condition": "code-mixed",
             "speakers": len({t["speaker"] for t in turns}),
             "recording": "far-field, single channel, 16 kHz (natural conversation)",

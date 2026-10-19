@@ -35,6 +35,9 @@ services:
       DATA_DIR: /app/data
       FFMPEG_BIN: ""
       OLLAMA_HOST: http://ollama:11434
+      # The host's clock (set by docker/up.ps1 as a POSIX TZ string such as
+      # <+0530>-05:30), so run ids and timestamps match runs made natively.
+      TZ: ${CONTAINER_TZ:-UTC}
       # GPU configuration. A different config hash from the CPU (int8) runs,
       # so the evaluation never mixes the two. int8_float16 keeps Whisper
       # small enough on an 8 GB card to leave room for the language model.

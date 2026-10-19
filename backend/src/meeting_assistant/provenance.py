@@ -137,7 +137,9 @@ def capture(
         extra: additional fields to merge in, e.g. prompt versions.
     """
     block: dict[str, Any] = {
-        "captured_at": datetime.now().isoformat(timespec="seconds"),
+        # With its UTC offset: runs made in a container (UTC) and natively
+        # (local time) must still order correctly against each other.
+        "captured_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "git": git_state(),
         "environment": environment(),
         "settings": config.output_affecting_settings(),

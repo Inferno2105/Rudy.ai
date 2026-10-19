@@ -14,6 +14,13 @@ Set-Location (Join-Path $PSScriptRoot '..')
 $env:GIT_COMMIT = (git rev-parse HEAD).Trim()
 $env:GIT_BRANCH = (git rev-parse --abbrev-ref HEAD).Trim()
 $env:GIT_DIRTY = if (git status --porcelain) { 'true' } else { 'false' }
+# The host's UTC offset as a POSIX TZ string (no zoneinfo needed in the image),
+# so runs made in the container are stamped with the same clock as native ones.
+# POSIX counts the other way: UTC+05:30 is written <+0530>-05:30.
+$offset = [TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now)
+$abs = $offset.Duration()
+$east = $offset -ge [TimeSpan]::Zero
+$env:CONTAINER_TZ = '<{0}{1:hh}{1:mm}>{2}{1:hh}:{1:mm}' -f $(if ($east) { '+' } else { '-' }), $abs, $(if ($east) { '-' } else { '+' })
 
 if (-not (Test-Path .env)) {
     Write-Warning '.env not found: diarization needs HF_TOKEN. Copy .env.example to .env and fill it in.'

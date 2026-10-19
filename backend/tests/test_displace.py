@@ -155,3 +155,15 @@ def test_labels_past_the_end_of_the_recording_are_cut_at_it(tmp_path):
     labels = read_clip(folder)
     assert [(t["start"], t["end"]) for t in labels.turns] == [(0.0, 2.0), (9.0, 10.0)]
     assert labels.meta["excluded"]["after_recording_end"] == 2
+
+
+def test_tuning_sessions_are_marked_and_reported_apart(tmp_path):
+    from meeting_assistant.cli.main import _clip_set
+
+    corpus = _corpus(tmp_path, {"M030": HINDI_ENGLISH, "X001": HINDI_ENGLISH})
+    displace.import_corpus(corpus, tmp_path / "refs", tmp_path / "audio")
+
+    tune, test = tmp_path / "refs" / "displace-m030", tmp_path / "refs" / "displace-x001"
+    assert read_clip(tune).meta["split"] == "tune" and read_clip(test).meta["split"] == "test"
+    assert _clip_set(tune, "real_audio") == "displace2023-dev:tune"
+    assert _clip_set(test, "real_audio") == "displace2023-dev"

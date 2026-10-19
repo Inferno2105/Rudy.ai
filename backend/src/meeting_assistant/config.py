@@ -77,6 +77,26 @@ WHISPER_DEVICE: str = os.environ.get("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE: str = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 
 
+def _flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    return default if value is None or not value.strip() else value.strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+
+
+# Decoding options that matter on long, multi-speaker conversations (both are
+# faster-whisper's own parameters, defaults shown as theirs):
+# - condition_on_previous_text: each window is decoded with the previous
+#   window's text as context. On long, overlapping, far-field speech that lets
+#   one bad window send the decoder into a repetition loop that also skips
+#   real speech.
+# - multilingual: detect the language again for every segment instead of once
+#   from the first 30 s, so English in a Hindi-led conversation stays in Latin
+#   script (code-switching).
+WHISPER_CONDITION_ON_PREVIOUS: bool = _flag("WHISPER_CONDITION_ON_PREVIOUS", True)
+WHISPER_MULTILINGUAL: bool = _flag("WHISPER_MULTILINGUAL", False)
+
+
 # ---------------------------------------------------------------------------
 # Diarization and speaker embeddings (pyannote.audio 4.x)
 # ---------------------------------------------------------------------------
@@ -233,6 +253,10 @@ def output_affecting_settings() -> dict[str, str]:
         # the key unconditionally would change the hash of every existing
         # (CPU) run and break comparisons with them.
         **({"diarization_device": DIARIZATION_DEVICE} if DIARIZATION_DEVICE != "cpu" else {}),
+        # Decoding options, likewise only when they differ from faster-whisper's
+        # defaults, so earlier runs keep their hash.
+        **({"whisper_condition_on_previous": "false"} if not WHISPER_CONDITION_ON_PREVIOUS else {}),
+        **({"whisper_multilingual": "true"} if WHISPER_MULTILINGUAL else {}),
     }
 
 

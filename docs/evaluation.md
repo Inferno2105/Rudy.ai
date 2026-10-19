@@ -50,6 +50,12 @@ languages present, other-language speech at most 1%; annotation tags such as
 silence-only segments not counted as speaker turns. Each clip's `meta.json`
 records the dataset, licence terms and what was left out.
 
+Three sessions (M030 balanced, B022 English-dominant with four speakers, M020
+Hindi-dominant; `displace.TUNING_SESSIONS`) are the **tuning split**
+(`"split": "tune"`): settings such as Whisper's decoding options are chosen on
+them, and they are reported as `displace2023-dev:tune`, never in the DISPLACE
+results. The other 21 sessions are the test split the paper reports.
+
 It scores diarization, language ID and ASR on speech this project never saw.
 It has no summaries or action items, so the meeting-intelligence stages are
 scored only on this project's own clips. It is reported as its own set

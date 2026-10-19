@@ -325,7 +325,9 @@ class RunManifest:
 
     def set_status(self, status: str) -> None:
         self.status = status
-        self.provenance_block["finished_at"] = datetime.now().isoformat(timespec="seconds")
+        self.provenance_block["finished_at"] = (
+            datetime.now().astimezone().isoformat(timespec="seconds")
+        )
         self.save()
 
     def set_extra(self, key: str, value: Any) -> None:
