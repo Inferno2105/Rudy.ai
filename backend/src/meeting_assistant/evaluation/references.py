@@ -15,6 +15,8 @@ can produce without any tooling (``docs/annotation-guide.md`` explains each):
 ``summary.txt``        A few sentences on what the meeting was about.
 ``action_items.txt``   One ``person | task | deadline`` line per commitment,
                        or the single word ``none``.
+``rubric.txt``         Human rating of the system's summary, 1-3 per criterion:
+                       ``faithfulness: 3`` / ``coverage: 2`` / ``no_invention: 3``.
 ``meta.json``          Recording condition, speakers, device, date, consent ids.
 =====================  ========================================================
 
@@ -57,6 +59,10 @@ _LANGUAGE_ALIASES = {
 }
 
 CONDITIONS = ("hindi-dominant", "english-dominant", "code-mixed", "adverse")
+# The summary rubric: each criterion scored 1 (poor) to 3 (good) by a person
+# reading the system's summary against the recording and reference summary.
+RUBRIC_CRITERIA = ("faithfulness", "coverage", "no_invention")
+RUBRIC_SCALE = (1, 3)
 NO_ACTION_ITEMS = "none"
 # The label each stretch carries in a blind copy, until the second annotator replaces it.
 BLIND_PLACEHOLDER = "?"
@@ -180,6 +186,32 @@ def read_action_items(clip_dir: Path) -> list[dict[str, Any]] | None:
     return None
 
 
+def read_rubric(clip_dir: Path) -> dict[str, int] | None:
+    """``rubric.txt`` as ``{criterion: score}``; ``None`` until every criterion is scored."""
+    path = clip_dir / "rubric.txt"
+    if not path.is_file():
+        return None
+    scores: dict[str, int] = {}
+    low, high = RUBRIC_SCALE
+    for number, line in _content_lines(path):
+        name, _, value = line.partition(":")
+        name = name.strip().lower().replace(" ", "_").replace("-", "_")
+        if name not in RUBRIC_CRITERIA:
+            raise LabelError(
+                f"rubric.txt line {number}: {name!r} is not a criterion; use "
+                f"{', '.join(RUBRIC_CRITERIA)}"
+            )
+        value = value.strip()
+        if not value:
+            continue  # not scored yet
+        if not value.isdigit() or not low <= int(value) <= high:
+            raise LabelError(
+                f"rubric.txt line {number}: {name} must be {low}-{high}, got {value!r}"
+            )
+        scores[name] = int(value)
+    return scores if set(scores) == set(RUBRIC_CRITERIA) else None
+
+
 def read_meta(clip_dir: Path) -> dict[str, Any]:
     path = clip_dir / "meta.json"
     if not path.is_file():
@@ -239,6 +271,7 @@ class ClipLabels:
     second_language_spans: list[dict[str, Any]] | None = None
     summary: str | None = None
     action_items: list[dict[str, Any]] | None = None
+    summary_rubric: dict[str, int] | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -255,6 +288,7 @@ def read_clip(clip_dir: Path) -> ClipLabels:
         second_language_spans=spans("languages_b.txt"),
         summary=read_text_label(clip_dir / "summary.txt"),
         action_items=read_action_items(clip_dir),
+        summary_rubric=read_rubric(clip_dir),
         meta=read_meta(clip_dir),
     )
 

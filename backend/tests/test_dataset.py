@@ -47,6 +47,9 @@ def _label_completely(folder):
         encoding="utf-8",
     )
     (folder / "action_items.txt").write_text("P02 | finish testing | tomorrow\n", encoding="utf-8")
+    (folder / "rubric.txt").write_text(
+        "faithfulness: 3\ncoverage: 2\nno_invention: 3\n", encoding="utf-8"
+    )
     (folder / "meta.json").write_text(
         json.dumps(
             {
@@ -71,6 +74,7 @@ def test_new_clip_creates_templates_that_count_as_not_done(data):
         "transcript.txt",
         "summary.txt",
         "action_items.txt",
+        "rubric.txt",
         "meta.json",
     }
     check = dataset.check_clip(folder)
@@ -225,3 +229,24 @@ def test_check_command_reports_agreement(data, capsys):
     out = capsys.readouterr().out
     assert code == 0
     assert "Annotator agreement so far" in out and "50% identical labels" in out
+
+
+def test_the_rubric_reads_scores_and_rejects_out_of_range_ones(tmp_path):
+    import pytest
+
+    from meeting_assistant.evaluation.references import LabelError, read_rubric
+
+    path = tmp_path / "rubric.txt"
+    def write(*lines):
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    write("# note", "faithfulness: 3", "coverage:", "no_invention: 2")
+    assert read_rubric(tmp_path) is None  # coverage not scored yet
+    write("faithfulness: 3", "coverage: 1", "no invention: 2")
+    assert read_rubric(tmp_path) == {"faithfulness": 3, "coverage": 1, "no_invention": 2}
+    write("faithfulness: 5")
+    with pytest.raises(LabelError, match="must be 1-3"):
+        read_rubric(tmp_path)
+    write("clarity: 2")
+    with pytest.raises(LabelError, match="not a criterion"):
+        read_rubric(tmp_path)

@@ -241,11 +241,33 @@ remaining, person-compatible reference item if their task similarity
 configurable). See `intel_metrics.py`'s docstring for the exact
 precision/recall convention on empty-prediction/empty-reference edge cases.
 
-### System metrics: RTF, latency
+### System metrics: RTF, latency, live capture
 
-Pulled straight from each run's manifest (stage timings,
-`live_stats.realtime_factor` for live runs) — no separate computation
-needed; `_load_clip_hypothesis` in `cli/main.py` just reads them through.
+Pulled straight from each run's manifest: the transcript stage's real-time
+factor and seconds, and for a live run its capture statistics
+(`live_chunks_recorded` against `live_chunks_processed`, `live_max_backlog`,
+`live_mean_chunk_latency_sec`, `live_realtime_factor`). Timings are only
+meaningful from runs made one at a time on an otherwise idle machine.
+
+### Added for the paper's tables
+
+- **`asr.wer_raw_no_fillers`**: WER with the filler words of
+  `text_norm.DEFAULT_FILLERS` removed from both sides; the sensitivity of the
+  headline WER to fillers (annotation decision D2).
+- **`language_id_after_romanization`**: the same script-based detector run on
+  the normalize stage's romanized text, scored like `language_id`. It measures
+  what the ordering rule (language ID before romanization) protects against.
+- **`attribution.unattributed_share`**: share of transcribed speech time the
+  aligner left `UNKNOWN`, which qualifies every speaker statistic.
+- **`summary_rubric`**: the human rating in `rubric.txt` (faithfulness,
+  coverage, no invention; 1-3 each, and their mean), reported only when the
+  run produced a summary.
+- **`ci95`** on every aggregate: a percentile bootstrap 95% interval of the
+  mean over clips (2000 resamples, fixed seed, so a regenerated report gives
+  the same interval) for each headline metric (`report.HEADLINE_METRICS`).
+- **`aggregate_by_condition`**: each set's means again by the clip's
+  `condition` (hindi-dominant, english-dominant, code-mixed, adverse), the
+  rows of the paper's recognition table.
 
 ## Current status
 

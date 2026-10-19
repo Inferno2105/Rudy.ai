@@ -346,6 +346,22 @@ def _run_started(manifest):
     return started if started.tzinfo else started.astimezone()
 
 
+def _by_condition(reports: list[dict]) -> dict:
+    from meeting_assistant.evaluation.report import aggregate_reports
+
+    groups: dict[str, list[dict]] = {}
+    for report in reports:
+        groups.setdefault(report["source"].get("condition") or "unspecified", []).append(report)
+    return {condition: aggregate_reports(group) for condition, group in sorted(groups.items())}
+
+
+def _clip_condition(clip_dir) -> str | None:
+    """The clip's recording condition (meta.json), for per-condition results."""
+    from meeting_assistant.evaluation.references import read_meta
+
+    return read_meta(clip_dir).get("condition") or None
+
+
 RECORDED_SET = "recorded"
 SYNTHETIC_SET = "synthetic"
 
@@ -383,6 +399,7 @@ def _load_clip_reference(clip_dir):
         summary=labels.summary,
         action_items=labels.action_items,
         true_speaker_count=labels.meta.get("speakers") or labels.meta.get("true_speaker_count"),
+        summary_rubric=labels.summary_rubric,
     )
 
 
@@ -455,6 +472,17 @@ def _load_clip_hypothesis(run):
                 "realtime_factor": transcript_stage.get("counts", {}).get("realtime_factor"),
                 "transcribe_seconds": transcript_stage.get("seconds"),
             }
+        # A live run's capture statistics: chunks recorded against processed
+        # (nothing dropped), backlog and per-chunk latency.
+        live = (manifest.get("extra") or {}).get("live_stats")
+        if live:
+            system_metrics = {
+                **(system_metrics or {}),
+                **{f"live_{key}": value for key, value in live.items()
+                   if isinstance(value, int | float) and not isinstance(value, bool)},
+            }
+
+    romanized = read_json(run.artifact("hinglish")) if run.has("hinglish") else None
 
     return ClipHypothesis(
         transcript_text=transcript_text,
@@ -462,6 +490,7 @@ def _load_clip_hypothesis(run):
         summary=summary,
         action_items=action_items,
         resolved_segments=resolved_segments,
+        romanized_segments=romanized,
         system_metrics=system_metrics,
     )
 
@@ -526,6 +555,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         report = generate_clip_report(clip_id, hypothesis, reference)
         report["source"] = _clip_source(RunManifest.load(run))
         report["source"]["dataset"] = _clip_set(clip_dir, report["source"]["data_origin"])
+        report["source"]["condition"] = _clip_condition(clip_dir)
         reports.append(report)
         clip_set = report["source"]["dataset"]
         label = "" if clip_set == RECORDED_SET else f" ({clip_set})"
@@ -567,6 +597,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
             # Published corpora (meta.json "dataset"), each on its own.
             "aggregate_external": {
                 name: aggregate_reports(group) for name, group in sorted(by_set.items())
+            },
+            # Each set again by recording condition (hindi-dominant, ..., adverse).
+            "aggregate_by_condition": {
+                name: _by_condition(group)
+                for name, group in (("recorded", real), ("synthetic", synthetic),
+                                    *sorted(by_set.items()))
+                if group
             },
         },
     )

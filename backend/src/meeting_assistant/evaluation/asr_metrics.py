@@ -83,16 +83,21 @@ class CharErrorResult:
         return {"cer": round(self.cer, 4), "reference_chars": self.reference_chars}
 
 
-def word_error_rate(reference: str, hypothesis: str) -> WordErrorResult:
+def word_error_rate(
+    reference: str, hypothesis: str, *, strip_fillers: bool = False
+) -> WordErrorResult:
     """WER over :func:`~meeting_assistant.evaluation.text_norm.normalize_text`-d text.
+
+    ``strip_fillers`` removes the filler words of ``text_norm.DEFAULT_FILLERS``
+    from both sides first: the sensitivity variant of the headline WER.
 
     An empty (post-normalization) reference is a degenerate case ``jiwer``
     raises on rather than scores. Handled explicitly: 0.0 if the hypothesis is
     also empty (nothing said, nothing transcribed -- perfect agreement), 1.0
     otherwise (every hypothesis word is an insertion against nothing).
     """
-    ref = normalize_text(reference)
-    hyp = normalize_text(hypothesis)
+    ref = normalize_text(reference, strip_fillers=strip_fillers)
+    hyp = normalize_text(hypothesis, strip_fillers=strip_fillers)
 
     if not ref:
         hyp_words = hyp.split() if hyp else []

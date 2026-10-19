@@ -787,8 +787,20 @@ export interface components {
             system?: {
                 [key: string]: unknown;
             } | null;
+            /** @description Language ID re-run on the romanized text: evidence for running it first */
+            language_id_after_romanization?: components["schemas"]["LanguageIdMetrics"] | null;
+            attribution?: components["schemas"]["Attribution"] | null;
+            /** @description Human rating of the summary, 1-3 per criterion */
+            summary_rubric?: components["schemas"]["SummaryRubric"] | null;
             /** Num Clips */
             num_clips: number;
+            /**
+             * Ci95
+             * @description Percentile bootstrap 95% interval of the mean over clips, per headline metric (dotted path, e.g. asr.wer_raw.wer)
+             */
+            ci95?: {
+                [key: string]: number[];
+            } | null;
         } & {
             [key: string]: unknown;
         };
@@ -797,6 +809,20 @@ export interface components {
             wer_raw?: components["schemas"]["WordErrors"] | null;
             wer_romanized?: components["schemas"]["WordErrors"] | null;
             cer_raw?: components["schemas"]["CharErrors"] | null;
+            /** @description WER with filler words removed from both sides (sensitivity) */
+            wer_raw_no_fillers?: components["schemas"]["WordErrors"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** Attribution */
+        Attribution: {
+            /**
+             * Unattributed Share
+             * @description Share of transcribed speech time left without a speaker
+             */
+            unattributed_share?: number | null;
+            /** Unattributed Seconds */
+            unattributed_seconds?: number | null;
         } & {
             [key: string]: unknown;
         };
@@ -867,6 +893,11 @@ export interface components {
             system?: {
                 [key: string]: unknown;
             } | null;
+            /** @description Language ID re-run on the romanized text: evidence for running it first */
+            language_id_after_romanization?: components["schemas"]["LanguageIdMetrics"] | null;
+            attribution?: components["schemas"]["Attribution"] | null;
+            /** @description Human rating of the summary, 1-3 per criterion */
+            summary_rubric?: components["schemas"]["SummaryRubric"] | null;
             /** Clip Id */
             clip_id: string;
             /** @description Absent only in reports written before sources were recorded */
@@ -897,6 +928,11 @@ export interface components {
              * @description The set the clip is reported in: "recorded", "synthetic", or a published corpus such as displace2023-dev
              */
             dataset?: string | null;
+            /**
+             * Condition
+             * @description Recording condition from the clip's meta.json
+             */
+            condition?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -969,6 +1005,15 @@ export interface components {
              */
             aggregate_external?: {
                 [key: string]: components["schemas"]["AggregateReport"];
+            };
+            /**
+             * Aggregate By Condition
+             * @description Each set's means again by recording condition
+             */
+            aggregate_by_condition?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["AggregateReport"];
+                };
             };
         } & {
             [key: string]: unknown;
@@ -1411,6 +1456,19 @@ export interface components {
             highlights?: string[];
             /** Key Decisions */
             key_decisions?: string[];
+        };
+        /** SummaryRubric */
+        SummaryRubric: {
+            /** Faithfulness */
+            faithfulness?: number | null;
+            /** Coverage */
+            coverage?: number | null;
+            /** No Invention */
+            no_invention?: number | null;
+            /** Mean */
+            mean?: number | null;
+        } & {
+            [key: string]: unknown;
         };
         /** TranscriptResponse */
         TranscriptResponse: {

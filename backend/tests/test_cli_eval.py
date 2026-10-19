@@ -345,3 +345,27 @@ def test_run_timestamps_carry_their_utc_offset():
 
     stamp = provenance.capture()["captured_at"]
     assert datetime.fromisoformat(stamp).tzinfo is not None
+
+
+def test_cmd_eval_breaks_each_set_down_by_condition_and_reports_live_capture(tmp_path, monkeypatch):
+    from meeting_assistant.io_utils import read_json
+
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    for clip_id, condition in (("clip01", "hindi-dominant"), ("clip02", "adverse")):
+        clip_dir = tmp_path / "eval" / "references" / clip_id
+        _write_reference_clip(clip_dir)
+        write_json(clip_dir / "meta.json", {"speakers": 1, "condition": condition})
+        run = _write_completed_run(tmp_path / "runs", f"{clip_id}.wav")
+    manifest = RunManifest.load(run)
+    manifest.set_extra("live_stats", {"chunks_recorded": 7, "chunks_processed": 7,
+                                      "mean_chunk_latency_sec": 2.5})
+
+    assert cmd_eval(argparse_namespace()) == 0
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+
+    by_condition = report["aggregate_by_condition"]["recorded"]
+    assert sorted(by_condition) == ["adverse", "hindi-dominant"]
+    assert by_condition["adverse"]["num_clips"] == 1
+    live = next(c for c in report["clips"] if c["clip_id"] == "clip02")["system"]
+    assert live["live_chunks_recorded"] == live["live_chunks_processed"] == 7

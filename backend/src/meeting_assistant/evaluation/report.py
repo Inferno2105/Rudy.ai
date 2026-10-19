@@ -43,6 +43,9 @@ class ClipHypothesis:
     summary: str | None = None
     action_items: list[dict[str, Any]] | None = None
     resolved_segments: list[dict[str, Any]] | None = None
+    # The normalize stage's romanized segments, to show what language ID would
+    # see if it ran after romanization (the ordering rule's evidence).
+    romanized_segments: list[dict[str, Any]] | None = None
     system_metrics: dict[str, Any] | None = None
 
 
@@ -60,6 +63,8 @@ class ClipReference:
     summary: str | None = None
     action_items: list[dict[str, Any]] | None = None
     true_speaker_count: int | None = None
+    # Human rating of the system's summary, {criterion: 1-3} (rubric.txt).
+    summary_rubric: dict[str, int] | None = None
 
 
 def generate_clip_report(
@@ -89,6 +94,10 @@ def generate_clip_report(
             "cer_raw": character_error_rate(
                 reference.transcript_text, hypothesis.transcript_text
             ).as_dict(),
+            # Sensitivity of the headline number to filler words (decision D2).
+            "wer_raw_no_fillers": word_error_rate(
+                reference.transcript_text, hypothesis.transcript_text, strip_fillers=True
+            ).as_dict(),
         }
 
     if hypothesis.turns is not None and reference.turns is not None:
@@ -114,6 +123,47 @@ def generate_clip_report(
             ).as_dict(),
             "segments_scored": len(pairs),
             "segments_total": len(hypothesis.resolved_segments),
+        }
+
+    if hypothesis.romanized_segments is not None and reference.language_spans is not None:
+        # What a detector that ran *after* romanization would say: the reason
+        # language ID runs first, measured rather than asserted.
+        from meeting_assistant.language.detection import detect_language
+
+        pairs = [
+            (truth, detect_language(segment.get("text", "")))
+            for segment in hypothesis.romanized_segments
+            if (truth := language_at(segment["start"], segment["end"],
+                                     reference.language_spans)) is not None
+        ]
+        if pairs:
+            report["language_id_after_romanization"] = {
+                **classification_metrics(
+                    [truth for truth, _ in pairs], [str(guess) for _, guess in pairs]
+                ).as_dict(),
+                "segments_scored": len(pairs),
+            }
+
+    if hypothesis.resolved_segments:
+        from meeting_assistant.align.alignment import UNKNOWN_SPEAKER
+
+        spoken = sum(max(0.0, s["end"] - s["start"]) for s in hypothesis.resolved_segments)
+        unattributed = sum(
+            max(0.0, s["end"] - s["start"])
+            for s in hypothesis.resolved_segments
+            if s.get("speaker") == UNKNOWN_SPEAKER
+        )
+        report["attribution"] = {
+            "unattributed_share": round(unattributed / spoken, 4) if spoken else 0.0,
+            "unattributed_seconds": round(unattributed, 2),
+        }
+
+    if hypothesis.summary is not None and reference.summary_rubric is not None:
+        report["summary_rubric"] = {
+            **reference.summary_rubric,
+            "mean": round(
+                sum(reference.summary_rubric.values()) / len(reference.summary_rubric), 4
+            ),
         }
 
     if hypothesis.summary is not None and reference.summary is not None:
@@ -189,4 +239,60 @@ def aggregate_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
     aggregated: dict[str, Any] = {"num_clips": len(reports)}
     for family in families:
         aggregated[family] = _aggregate_leaf([report.get(family) for report in reports])
+    intervals = {
+        path: ci
+        for path in HEADLINE_METRICS
+        if (ci := bootstrap_ci([v for r in reports if _is_number(v := _get(r, path))]))
+    }
+    if intervals:
+        aggregated["ci95"] = intervals
     return aggregated
+
+
+# The numbers a results table reports, each with a bootstrap confidence interval.
+HEADLINE_METRICS = (
+    "asr.wer_raw.wer",
+    "asr.wer_romanized.wer",
+    "asr.cer_raw.cer",
+    "asr.wer_raw_no_fillers.wer",
+    "diarization.der",
+    "diarization.no_collar.der",
+    "registry.identity_accuracy",
+    "language_id.accuracy",
+    "language_id_after_romanization.accuracy",
+    "attribution.unattributed_share",
+    "summary.rougeL_f",
+    "summary_rubric.mean",
+    "action_items.f1",
+    "system.realtime_factor",
+)
+BOOTSTRAP_RESAMPLES = 2000
+BOOTSTRAP_SEED = 0
+
+
+def _get(report: dict[str, Any], path: str) -> Any:
+    value: Any = report
+    for key in path.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def bootstrap_ci(values: list[float], *, level: float = 0.95) -> list[float] | None:
+    """Percentile bootstrap interval for the mean over clips, or ``None`` for
+    fewer than two clips (no spread to resample). Resampling is seeded, so a
+    report regenerated from the same runs gives the same interval."""
+    if len(values) < 2:
+        return None
+    import random
+
+    rng = random.Random(BOOTSTRAP_SEED)
+    n = len(values)
+    means = sorted(
+        sum(rng.choice(values) for _ in range(n)) / n for _ in range(BOOTSTRAP_RESAMPLES)
+    )
+    tail = (1 - level) / 2
+    low = means[int(tail * (BOOTSTRAP_RESAMPLES - 1))]
+    high = means[int((1 - tail) * (BOOTSTRAP_RESAMPLES - 1))]
+    return [round(low, 4), round(high, 4)]

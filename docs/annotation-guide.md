@@ -197,7 +197,29 @@ Riya | send the updated build to everyone | Friday
 - | book the meeting room | -
 ```
 
-## Step 7 — Run the check
+## Step 7 — Rate the app's summary (`rubric.txt`)
+
+Do this **last**: after your reference summary (step 5) is written and the clip
+has been run through the app. Open the app's summary of the clip, read it
+against the recording and your transcript, and score each line 1, 2 or 3:
+
+| Criterion | 1 | 2 | 3 |
+|---|---|---|---|
+| `faithfulness` | says something false about the meeting | mostly true, one inaccuracy | everything it says is true |
+| `coverage` | misses the main point or a decision | misses a minor point | main points and every decision |
+| `no_invention` | invents several things | invents one small thing | adds nothing that was not said |
+
+```text
+faithfulness: 3
+coverage: 2
+no_invention: 3
+```
+
+Score the summary as written, not how close it is to yours: ROUGE already
+measures overlap with your wording. Leave a value blank until you have scored
+it; the check counts the rubric as done only when all three are filled in.
+
+## Step 8 — Run the check
 
 ```powershell
 meeting-assistant dataset check clip01
@@ -215,7 +237,7 @@ clip01
 read every `check:` line and fix it if it is a real mistake. Run
 `meeting-assistant dataset check` without a clip id to see the whole dataset.
 
-## Step 8 — Second annotator (about 20% of clips)
+## Step 9 — Second annotator (about 20% of clips)
 
 So that the paper can report how reliable the language labels are, a second
 person labels the languages of about one clip in five **independently**. Choose

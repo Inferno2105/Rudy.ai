@@ -37,6 +37,9 @@ class AsrMetrics(_Open):
     wer_raw: WordErrors | None = None
     wer_romanized: WordErrors | None = None
     cer_raw: CharErrors | None = None
+    wer_raw_no_fillers: WordErrors | None = Field(
+        default=None, description="WER with filler words removed from both sides (sensitivity)"
+    )
 
 
 class DiarizationMetrics(_Open):
@@ -102,6 +105,23 @@ class ClipSource(_Open):
         description='The set the clip is reported in: "recorded", "synthetic", or a '
         "published corpus such as displace2023-dev",
     )
+    condition: str | None = Field(
+        default=None, description="Recording condition from the clip's meta.json"
+    )
+
+
+class Attribution(_Open):
+    unattributed_share: float | None = Field(
+        default=None, description="Share of transcribed speech time left without a speaker"
+    )
+    unattributed_seconds: float | None = None
+
+
+class SummaryRubric(_Open):
+    faithfulness: float | None = None
+    coverage: float | None = None
+    no_invention: float | None = None
+    mean: float | None = None
 
 
 class MetricFamilies(_Open):
@@ -112,6 +132,14 @@ class MetricFamilies(_Open):
     action_items: ActionItemMetrics | None = None
     registry: RegistryMetrics | None = None
     system: dict[str, Any] | None = None
+    language_id_after_romanization: LanguageIdMetrics | None = Field(
+        default=None,
+        description="Language ID re-run on the romanized text: evidence for running it first",
+    )
+    attribution: Attribution | None = None
+    summary_rubric: SummaryRubric | None = Field(
+        default=None, description="Human rating of the summary, 1-3 per criterion"
+    )
 
 
 class ClipReport(MetricFamilies):
@@ -123,6 +151,11 @@ class ClipReport(MetricFamilies):
 
 class AggregateReport(MetricFamilies):
     num_clips: int
+    ci95: dict[str, list[float]] | None = Field(
+        default=None,
+        description="Percentile bootstrap 95% interval of the mean over clips, per headline "
+        "metric (dotted path, e.g. asr.wer_raw.wer)",
+    )
 
 
 class EvalReport(_Open):
@@ -144,4 +177,8 @@ class EvalReport(_Open):
     aggregate_external: dict[str, AggregateReport] = Field(
         default_factory=dict,
         description="Means over each published corpus (e.g. displace2023-dev), reported apart",
+    )
+    aggregate_by_condition: dict[str, dict[str, AggregateReport]] = Field(
+        default_factory=dict,
+        description="Each set's means again by recording condition",
     )

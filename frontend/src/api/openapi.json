@@ -1734,9 +1734,59 @@
             ],
             "title": "System"
           },
+          "language_id_after_romanization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LanguageIdMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Language ID re-run on the romanized text: evidence for running it first"
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Attribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary_rubric": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryRubric"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human rating of the summary, 1-3 per criterion"
+          },
           "num_clips": {
             "type": "integer",
             "title": "Num Clips"
+          },
+          "ci95": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci95",
+            "description": "Percentile bootstrap 95% interval of the mean over clips, per headline metric (dotted path, e.g. asr.wer_raw.wer)"
           }
         },
         "additionalProperties": true,
@@ -1777,11 +1827,52 @@
                 "type": "null"
               }
             ]
+          },
+          "wer_raw_no_fillers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WordErrors"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "WER with filler words removed from both sides (sensitivity)"
           }
         },
         "additionalProperties": true,
         "type": "object",
         "title": "AsrMetrics"
+      },
+      "Attribution": {
+        "properties": {
+          "unattributed_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unattributed Share",
+            "description": "Share of transcribed speech time left without a speaker"
+          },
+          "unattributed_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unattributed Seconds"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Attribution"
       },
       "AudioFile": {
         "properties": {
@@ -1993,6 +2084,38 @@
             ],
             "title": "System"
           },
+          "language_id_after_romanization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LanguageIdMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Language ID re-run on the romanized text: evidence for running it first"
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Attribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary_rubric": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryRubric"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human rating of the summary, 1-3 per criterion"
+          },
           "clip_id": {
             "type": "string",
             "title": "Clip Id"
@@ -2078,6 +2201,18 @@
             ],
             "title": "Dataset",
             "description": "The set the clip is reported in: \"recorded\", \"synthetic\", or a published corpus such as displace2023-dev"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition",
+            "description": "Recording condition from the clip's meta.json"
           }
         },
         "additionalProperties": true,
@@ -2285,6 +2420,17 @@
             "type": "object",
             "title": "Aggregate External",
             "description": "Means over each published corpus (e.g. displace2023-dev), reported apart"
+          },
+          "aggregate_by_condition": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/AggregateReport"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Aggregate By Condition",
+            "description": "Each set's means again by recording condition"
           }
         },
         "additionalProperties": true,
@@ -3421,6 +3567,57 @@
         },
         "type": "object",
         "title": "SummaryResponse"
+      },
+      "SummaryRubric": {
+        "properties": {
+          "faithfulness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faithfulness"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "no_invention": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Invention"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "SummaryRubric"
       },
       "TranscriptResponse": {
         "properties": {

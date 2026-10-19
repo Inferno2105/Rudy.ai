@@ -36,11 +36,13 @@ def test_reference_without_hypothesis_is_not_scored():
     assert "summary" not in report
 
 
-def test_asr_family_contains_all_three_wer_variants():
+def test_asr_family_contains_the_three_wer_variants_and_the_filler_sensitivity():
     hyp = ClipHypothesis(transcript_text="namaste duniya")
     ref = ClipReference(transcript_text="namaste duniya")
     report = generate_clip_report("clip01", hyp, ref)
-    assert set(report["asr"].keys()) == {"wer_raw", "wer_romanized", "cer_raw"}
+    assert set(report["asr"].keys()) == {
+        "wer_raw", "wer_romanized", "cer_raw", "wer_raw_no_fillers"
+    }
 
 
 def test_true_speakers_come_from_the_reference_turns_by_time():
@@ -173,3 +175,55 @@ def test_diarization_also_reports_the_no_collar_der_published_benchmarks_use():
     assert diarization["collar"] == 0.25 and diarization["no_collar"]["collar"] == 0.0
     assert diarization["no_collar"]["der"] == pytest.approx(0.025, abs=1e-3)
     assert diarization["der"] < diarization["no_collar"]["der"]
+
+
+def test_filler_words_are_reported_as_a_separate_sensitivity_number():
+    hyp = ClipHypothesis(transcript_text="we will ship it friday")
+    ref = ClipReference(transcript_text="hmm we will um ship it friday")
+    asr = generate_clip_report("clip01", hyp, ref)["asr"]
+    assert asr["wer_raw"]["wer"] > 0
+    assert asr["wer_raw_no_fillers"]["wer"] == 0.0
+
+
+def test_language_id_after_romanization_shows_why_it_must_run_first():
+    """Romanized Hindi reads as English to a script-based detector."""
+    spans = [{"start": 0.0, "end": 2.0, "language": "Hindi"}]
+    hyp = ClipHypothesis(
+        resolved_segments=[{"start": 0.0, "end": 2.0, "speaker": "A", "language": "Hindi"}],
+        romanized_segments=[{"start": 0.0, "end": 2.0, "text": "kal milte hain"}],
+    )
+    report = generate_clip_report("clip01", hyp, ClipReference(language_spans=spans))
+    assert report["language_id"]["accuracy"] == 1.0
+    assert report["language_id_after_romanization"]["accuracy"] == 0.0
+
+
+def test_unattributed_speech_is_reported_as_a_share_of_transcribed_time():
+    hyp = ClipHypothesis(resolved_segments=[
+        {"start": 0.0, "end": 6.0, "speaker": "SPEAKER_00", "language": "English"},
+        {"start": 6.0, "end": 8.0, "speaker": "UNKNOWN", "language": "English"},
+    ])
+    attribution = generate_clip_report("clip01", hyp, ClipReference())["attribution"]
+    assert attribution == {"unattributed_share": 0.25, "unattributed_seconds": 2.0}
+
+
+def test_the_summary_rubric_is_reported_only_for_a_summary_that_exists():
+    rubric = {"faithfulness": 3, "coverage": 2, "no_invention": 3}
+    ref = ClipReference(summary_rubric=rubric)
+    assert "summary_rubric" not in generate_clip_report("c", ClipHypothesis(), ref)
+    scored = generate_clip_report("c", ClipHypothesis(summary="..."), ref)["summary_rubric"]
+    assert scored == {**rubric, "mean": 2.6667}
+
+
+def test_aggregates_carry_a_reproducible_bootstrap_interval_for_headline_metrics():
+    from meeting_assistant.evaluation.report import bootstrap_ci
+
+    reports = [
+        {"clip_id": c, "asr": {"wer_raw": {"wer": w}}}
+        for c, w in (("a", 0.1), ("b", 0.2), ("c", 0.3), ("d", 0.4))
+    ]
+    aggregated = aggregate_reports(reports)
+    low, high = aggregated["ci95"]["asr.wer_raw.wer"]
+    assert low <= aggregated["asr"]["wer_raw"]["wer"] <= high and low < high
+    assert aggregate_reports(reports)["ci95"] == aggregated["ci95"]  # seeded
+    assert bootstrap_ci([0.5]) is None  # one clip has no spread
+    assert "ci95" not in aggregate_reports(reports[:1])

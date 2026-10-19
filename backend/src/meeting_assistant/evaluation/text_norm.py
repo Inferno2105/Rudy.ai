@@ -42,7 +42,10 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # documented ablation -- "how sensitive is the headline number to filler
 # words") rather than baked silently into the default policy.
 DEFAULT_FILLERS = frozenset(
-    {"um", "uh", "umm", "uhh", "hmm", "matlab", "like", "actually", "basically", "haan", "toh"}
+    {"um", "uh", "umm", "uhh", "hmm", "matlab", "like", "actually", "basically", "haan", "toh",
+     # Hesitation sounds as transcribed in published corpora (DISPLACE writes
+     # them in both scripts); this project's own guide leaves them out.
+     "ahh", "ah", "aa", "hm", "mm", "uhm", "अ", "आ", "हम्म", "उम"}
 )
 
 

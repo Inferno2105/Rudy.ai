@@ -23,6 +23,7 @@ from meeting_assistant.evaluation.references import (
     read_action_items,
     read_language_spans,
     read_meta,
+    read_rubric,
     read_text_label,
     read_turns,
 )
@@ -35,7 +36,7 @@ _END_SLACK_SEC = 0.5
 # Two language labels may overlap this much before it counts as a mistake.
 _OVERLAP_SLACK_SEC = 0.05
 
-ITEMS = ("audio", "transcript", "turns", "languages", "summary", "actions", "meta")
+ITEMS = ("audio", "transcript", "turns", "languages", "summary", "actions", "rubric", "meta")
 OK, MISSING, PROBLEM = "ok", "--", "ERR"
 # A label a published corpus does not have (DISPLACE has no summaries).
 NOT_APPLICABLE = "n/a"
@@ -78,6 +79,20 @@ _ACTIONS_TEMPLATE = """\
 """
 
 
+_RUBRIC_TEMPLATE = """# Rating of the APP'S summary of {clip}. Lines starting with # are ignored.
+# Fill this in LAST: after the reference summary is written and the clip has
+# been run. Read the app's summary against the recording and score each line
+# 1 (poor), 2 (partly) or 3 (good):
+#   faithfulness  - everything it says is true of the meeting
+#   coverage      - it includes the main points and every decision
+#   no_invention  - it adds nothing that was not said (3 = nothing invented)
+# Full rules: docs/annotation-guide.md, step 7.
+faithfulness:
+coverage:
+no_invention:
+"""
+
+
 def new_clip(clip_id: str) -> tuple[Path, list[str]]:
     """Create ``references/<clip_id>/`` with templates; return it and any notes.
 
@@ -96,6 +111,7 @@ def new_clip(clip_id: str) -> tuple[Path, list[str]]:
     write_text(folder / "transcript.txt", _TRANSCRIPT_TEMPLATE.format(clip=clip_id))
     write_text(folder / "summary.txt", _SUMMARY_TEMPLATE.format(clip=clip_id))
     write_text(folder / "action_items.txt", _ACTIONS_TEMPLATE.format(clip=clip_id))
+    write_text(folder / "rubric.txt", _RUBRIC_TEMPLATE.format(clip=clip_id))
     write_json(
         folder / "meta.json",
         {
@@ -192,6 +208,7 @@ def check_clip(folder: Path) -> ClipCheck:
         external = False
     if external:
         check.status["summary"] = check.status["actions"] = NOT_APPLICABLE
+        check.status["rubric"] = NOT_APPLICABLE
 
     def run(item: str, fn) -> Any:
         try:
@@ -307,6 +324,12 @@ def check_clip(folder: Path) -> ClipCheck:
     items = run("actions", lambda: read_action_items(folder))
     if items is not None:
         check.status["actions"] = OK
+
+    # Summary rubric (scored last, after the clip has been run).
+    if not external:
+        rubric = run("rubric", lambda: read_rubric(folder))
+        if rubric is not None:
+            check.status["rubric"] = OK
 
     # Meta.
     meta = run("meta", lambda: read_meta(folder))

@@ -181,6 +181,20 @@ describe('evaluation', () => {
     expect(within(row).getByText('displace2023-dev')).toBeInTheDocument()
   })
 
+  it('shows the bootstrap interval under a headline metric', async () => {
+    server.use(
+      http.get(API('/api/eval/report'), () =>
+        HttpResponse.json({
+          ...f.evalReport,
+          aggregate: { ...f.evalReport.aggregate, ci95: { 'asr.wer_raw.wer': [0.1812, 0.2456] } },
+        }),
+      ),
+    )
+    renderApp('/evaluation')
+    expect(await screen.findByText(/95% CI/)).toBeInTheDocument()
+    expect(screen.getByText('0.181–0.246')).toBeInTheDocument()
+  })
+
   it('warns when the scored runs span several configurations', async () => {
     server.use(
       http.get(API('/api/eval/report'), () =>

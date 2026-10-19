@@ -17,6 +17,8 @@ type Families = AggregateReport | ClipReport
 
 interface Metric {
   key: string
+  /** Dotted path in the report, as the harness names it in `ci95`. */
+  path: string
   label: string
   /** Where the value lives in a clip report / the aggregate. */
   read: (report: Families) => number | null | undefined
@@ -31,6 +33,7 @@ interface Metric {
 const METRICS: Metric[] = [
   {
     key: 'wer_raw',
+    path: 'asr.wer_raw.wer',
     label: 'WER (raw script)',
     family: 'ASR',
     better: 'lower',
@@ -38,6 +41,7 @@ const METRICS: Metric[] = [
   },
   {
     key: 'wer_rom',
+    path: 'asr.wer_romanized.wer',
     label: 'WER (romanized)',
     family: 'ASR',
     better: 'lower',
@@ -45,13 +49,23 @@ const METRICS: Metric[] = [
   },
   {
     key: 'cer_raw',
+    path: 'asr.cer_raw.cer',
     label: 'CER (raw script)',
     family: 'ASR',
     better: 'lower',
     read: (r) => r.asr?.cer_raw?.cer,
   },
   {
+    key: 'wer_nf',
+    path: 'asr.wer_raw_no_fillers.wer',
+    label: 'WER without fillers',
+    family: 'ASR',
+    better: 'lower',
+    read: (r) => r.asr?.wer_raw_no_fillers?.wer,
+  },
+  {
     key: 'der',
+    path: 'diarization.der',
     label: 'DER',
     family: 'Diarization',
     better: 'lower',
@@ -59,6 +73,7 @@ const METRICS: Metric[] = [
   },
   {
     key: 'der_nc',
+    path: 'diarization.no_collar.der',
     label: 'DER (no collar)',
     family: 'Diarization',
     better: 'lower',
@@ -66,20 +81,39 @@ const METRICS: Metric[] = [
   },
   {
     key: 'langid',
+    path: 'language_id.accuracy',
     label: 'Language-ID accuracy',
     family: 'Language ID',
     better: 'higher',
     read: (r) => r.language_id?.accuracy,
   },
   {
+    key: 'unattributed',
+    path: 'attribution.unattributed_share',
+    label: 'Unattributed speech',
+    family: 'Diarization',
+    better: 'lower',
+    read: (r) => r.attribution?.unattributed_share,
+  },
+  {
     key: 'rougeL',
+    path: 'summary.rougeL_f',
     label: 'ROUGE-L F',
     family: 'Summary',
     better: 'higher',
     read: (r) => r.summary?.rougeL_f,
   },
   {
+    key: 'rubric',
+    path: 'summary_rubric.mean',
+    label: 'Summary rubric (1–3)',
+    family: 'Summary',
+    better: 'higher',
+    read: (r) => r.summary_rubric?.mean,
+  },
+  {
     key: 'ai_f1',
+    path: 'action_items.f1',
     label: 'Action-item F1',
     family: 'Action items',
     better: 'higher',
@@ -87,6 +121,7 @@ const METRICS: Metric[] = [
   },
   {
     key: 'registry',
+    path: 'registry.identity_accuracy',
     label: 'Speaker identity accuracy',
     family: 'Speaker registry',
     better: 'higher',
@@ -94,6 +129,7 @@ const METRICS: Metric[] = [
   },
   {
     key: 'rtf',
+    path: 'system.realtime_factor',
     label: 'Real-time factor',
     family: 'System',
     better: 'lower',
@@ -111,16 +147,32 @@ function MetricCards({ aggregate }: { aggregate: AggregateReport }) {
   }
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {present.map((metric) => (
-        <Card key={metric.key} className="px-5 py-4">
-          <p className="text-muted text-xs font-medium tracking-wide uppercase">{metric.family}</p>
-          <p className="text-fg mt-1 text-sm">{metric.label}</p>
-          <p className="text-brand font-display mt-2 text-3xl font-semibold tabular-nums">
-            <CountUp value={metric.read(aggregate) ?? 0} digits={3} />
-          </p>
-          <p className="text-faint mt-1 text-xs">{metric.better} is better</p>
-        </Card>
-      ))}
+      {present.map((metric) => {
+        const ci = aggregate.ci95?.[metric.path]
+        return (
+          <Card key={metric.key} className="px-5 py-4">
+            <p className="text-muted text-xs font-medium tracking-wide uppercase">
+              {metric.family}
+            </p>
+            <p className="text-fg mt-1 text-sm">{metric.label}</p>
+            <p className="text-brand font-display mt-2 text-3xl font-semibold tabular-nums">
+              <CountUp value={metric.read(aggregate) ?? 0} digits={3} />
+            </p>
+            <p className="text-faint mt-1 text-xs">
+              {metric.better} is better
+              {ci ? (
+                <>
+                  {' '}
+                  · 95% CI{' '}
+                  <span className="tabular-nums">
+                    {formatMetric(ci[0])}–{formatMetric(ci[1])}
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </Card>
+        )
+      })}
     </div>
   )
 }
