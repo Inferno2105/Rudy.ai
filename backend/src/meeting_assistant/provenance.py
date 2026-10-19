@@ -28,8 +28,11 @@ from typing import Any
 from meeting_assistant import __version__, config
 
 
-def _git(*args: str) -> str | None:
+def _git(*args: str, allow_empty: bool = False) -> str | None:
     """Run a git command in the repo, returning ``None`` if it fails.
+
+    Empty output is ``None`` too, unless ``allow_empty``: for ``git status
+    --porcelain`` no output is the answer (a clean tree), not a failure.
 
     Provenance capture must never be the reason a run dies, so every failure
     mode here — git missing, not a repository, a detached worktree — degrades to
@@ -48,7 +51,8 @@ def _git(*args: str) -> str | None:
         return None
     if result.returncode != 0:
         return None
-    return result.stdout.strip() or None
+    output = result.stdout.strip()
+    return output if output or allow_empty else None
 
 
 def git_state() -> dict[str, Any]:
@@ -69,7 +73,7 @@ def git_state() -> dict[str, Any]:
             "dirty": {"true": True, "false": False}.get(dirty),
             "source": "build",
         }
-    status = _git("status", "--porcelain")
+    status = _git("status", "--porcelain", allow_empty=True)
     return {
         "commit": commit,
         "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
