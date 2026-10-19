@@ -887,6 +887,16 @@ export interface components {
             git_dirty?: boolean | null;
             /** Config Hash */
             config_hash?: string | null;
+            /**
+             * Data Origin
+             * @description "real_audio" or "synthetic" (generated speech); absent in older reports
+             */
+            data_origin?: string | null;
+            /**
+             * Dataset
+             * @description The set the clip is reported in: "recorded", "synthetic", or a published corpus such as displace2023-dev
+             */
+            dataset?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -926,6 +936,8 @@ export interface components {
             total?: number | null;
             /** Collar */
             collar?: number | null;
+            /** @description The same DER with no collar and overlapping speech scored (the DISPLACE protocol), comparable with published results */
+            no_collar?: components["schemas"]["DiarizationMetrics"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -947,7 +959,17 @@ export interface components {
             config_hashes?: string[];
             /** Clips */
             clips: components["schemas"]["ClipReport"][];
+            /** @description Means over this project's own recordings */
             aggregate: components["schemas"]["AggregateReport"];
+            /** @description Means over synthetic (generated-speech) clips, reported separately */
+            aggregate_synthetic?: components["schemas"]["AggregateReport"] | null;
+            /**
+             * Aggregate External
+             * @description Means over each published corpus (e.g. displace2023-dev), reported apart
+             */
+            aggregate_external?: {
+                [key: string]: components["schemas"]["AggregateReport"];
+            };
         } & {
             [key: string]: unknown;
         };

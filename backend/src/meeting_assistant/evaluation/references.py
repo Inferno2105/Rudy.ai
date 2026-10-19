@@ -200,6 +200,35 @@ def label_at(start: float, end: float, spans: list[dict[str, Any]], key: str) ->
     return best
 
 
+def language_at(start: float, end: float, spans: list[dict[str, Any]]) -> str | None:
+    """The reference language of the stretch ``[start, end)``, from what it contains.
+
+    A system segment is often longer than one reference label: DISPLACE labels
+    language every few words, and an annotator's stretch can end mid-segment.
+    Taking the single longest-overlapping label would call a segment holding a
+    real Hindi-English switch purely Hindi, so the truth is decided by the
+    time each language takes up inside the segment, with the same threshold the
+    detector uses for words (``CODE_MIX_THRESHOLD``): Code-Mixed when labelled
+    Code-Mixed speech dominates, or when the lesser of Hindi and English is at
+    least that share of the labelled time; otherwise the larger of the two.
+    ``None`` when no label overlaps the stretch.
+    """
+    from meeting_assistant.language.detection import CODE_MIX_THRESHOLD
+
+    seconds = dict.fromkeys(LANGUAGES, 0.0)
+    for span in spans:
+        overlap = min(end, span["end"]) - max(start, span["start"])
+        if overlap > 0:
+            seconds[span["language"]] += overlap
+    total = sum(seconds.values())
+    if total <= 0:
+        return None
+    hindi, english, mixed = seconds[HINDI], seconds[ENGLISH], seconds[CODE_MIXED]
+    if mixed >= max(hindi, english) or min(hindi, english) / total >= CODE_MIX_THRESHOLD:
+        return CODE_MIXED
+    return HINDI if hindi >= english else ENGLISH
+
+
 @dataclass
 class ClipLabels:
     """Everything an annotator wrote for one clip; each part ``None`` until written."""

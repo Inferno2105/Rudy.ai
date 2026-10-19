@@ -373,3 +373,25 @@ def test_the_api_create_then_execute_path_is_a_single_execution(
     data = read_json(paths.manifest_path)
     assert data["resumes"] == []
     assert data["consistency"] == {"executions": [0], "config": True, "code": True}
+
+
+def test_a_synthetic_run_is_marked_and_scored_only_as_its_own_set(
+    patch_stages, audio_file, tmp_path, monkeypatch
+):
+    """Generated speech (text-to-speech clips) must never pass as a recording."""
+    from meeting_assistant.pipeline.manifest import RunManifest
+
+    monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
+    patch_stages(_three_stage_chain())
+    paths = run_batch(audio_file, BatchOptions(data_origin="synthetic"))
+
+    assert read_json(paths.manifest_path)["data_origin"] == "synthetic"
+    manifest = RunManifest.load(paths)
+    assert "synthetic" in manifest.evaluation_ineligibility()
+    assert manifest.evaluation_ineligibility(allow_synthetic=True) is None
+
+
+def test_an_unknown_data_origin_is_refused(audio_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(batch_mod.config, "RUNS_DIR", tmp_path / "runs")
+    with pytest.raises(ValueError, match="data_origin"):
+        batch_mod.create_batch_run(audio_file, data_origin="tts")

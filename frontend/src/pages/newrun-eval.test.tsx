@@ -116,7 +116,8 @@ describe('evaluation', () => {
   it('shows aggregate metrics exactly as reported and links each clip to its run', async () => {
     server.use(http.get(API('/api/eval/report'), () => HttpResponse.json(f.evalReport)))
     renderApp('/evaluation')
-    expect(await screen.findByText('Mean across clips')).toBeInTheDocument()
+    expect(await screen.findByText('Recorded for this project')).toBeInTheDocument()
+    expect(screen.queryByText('Synthetic speech')).not.toBeInTheDocument()
     expect(screen.getAllByText('0.213').length).toBeGreaterThan(0)
     expect(screen.getAllByText('0.152').length).toBeGreaterThan(0)
     const table = screen.getByRole('table')
@@ -125,6 +126,59 @@ describe('evaluation', () => {
       `/runs/${f.RUN_ID}?tab=provenance`,
     )
     expect(screen.queryByText('These results mix configurations')).not.toBeInTheDocument()
+  })
+
+  it('reports synthetic clips separately from real recordings and tags them', async () => {
+    const synthetic = {
+      ...f.evalReport.clips[0],
+      clip_id: 'clip02',
+      source: { run_id: 'run-synthetic', config_hash: '108acd72e0ed', data_origin: 'synthetic' },
+      asr: { wer_raw: { wer: 0.0571 } },
+    }
+    server.use(
+      http.get(API('/api/eval/report'), () =>
+        HttpResponse.json({
+          ...f.evalReport,
+          clips: [...f.evalReport.clips, synthetic],
+          aggregate_synthetic: { num_clips: 1, asr: { wer_raw: { wer: 0.0571 } } },
+        }),
+      ),
+    )
+    renderApp('/evaluation')
+    expect(await screen.findByText('Synthetic speech')).toBeInTheDocument()
+    expect(screen.getByText(/1 own recording · 1 synthetic clip/)).toBeInTheDocument()
+    const row = within(screen.getByRole('table')).getByRole('rowheader', { name: /clip02/ })
+    expect(within(row).getByText('synthetic')).toBeInTheDocument()
+    expect(screen.getAllByText('0.057').length).toBeGreaterThan(0)
+  })
+
+  it('reports a published corpus on its own, with the no-collar DER', async () => {
+    const external = {
+      ...f.evalReport.clips[0],
+      clip_id: 'displace-m030',
+      source: { run_id: 'run-displace', config_hash: '108acd72e0ed', dataset: 'displace2023-dev' },
+      diarization: { der: 0.2011, no_collar: { der: 0.3123, collar: 0 } },
+    }
+    server.use(
+      http.get(API('/api/eval/report'), () =>
+        HttpResponse.json({
+          ...f.evalReport,
+          clips: [...f.evalReport.clips, external],
+          aggregate_external: {
+            'displace2023-dev': {
+              num_clips: 1,
+              diarization: { der: 0.2011, no_collar: { der: 0.3123, collar: 0 } },
+            },
+          },
+        }),
+      ),
+    )
+    renderApp('/evaluation')
+    expect(await screen.findByRole('heading', { name: 'displace2023-dev' })).toBeInTheDocument()
+    expect(screen.getAllByText('DER (no collar)').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('0.312').length).toBeGreaterThan(0)
+    const row = within(screen.getByRole('table')).getByRole('rowheader', { name: /displace-m030/ })
+    expect(within(row).getByText('displace2023-dev')).toBeInTheDocument()
   })
 
   it('warns when the scored runs span several configurations', async () => {

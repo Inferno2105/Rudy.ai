@@ -6,10 +6,11 @@ import { useEvalReport } from '../api/queries'
 import type { AggregateReport, ClipReport, EvalReport } from '../api/types'
 import { PageHeader } from '../components/AppShell'
 import { CountUp } from '../components/motion'
+import { Badge } from '../components/ui/badge'
 import { ErrorState } from '../components/states'
 import { Card, CardBody, CardHeader } from '../components/ui/card'
 import { Callout, EmptyState, LoadingBlock } from '../components/ui/feedback'
-import { formatDateTime, formatMetric, shortHash } from '../lib/format'
+import { formatCount, formatDateTime, formatMetric, plural, shortHash } from '../lib/format'
 import { useDocumentTitle } from '../lib/utils'
 
 type Families = AggregateReport | ClipReport
@@ -55,6 +56,13 @@ const METRICS: Metric[] = [
     family: 'Diarization',
     better: 'lower',
     read: (r) => r.diarization?.der,
+  },
+  {
+    key: 'der_nc',
+    label: 'DER (no collar)',
+    family: 'Diarization',
+    better: 'lower',
+    read: (r) => r.diarization?.no_collar?.der,
   },
   {
     key: 'langid',
@@ -145,8 +153,15 @@ function ClipTable({ clips }: { clips: ClipReport[] }) {
         <tbody className="divide-border divide-y">
           {clips.map((clip) => (
             <tr key={clip.clip_id}>
-              <th scope="row" translate="no" className="text-fg px-5 py-3 font-medium">
-                {clip.clip_id}
+              <th scope="row" className="text-fg px-5 py-3 font-medium whitespace-nowrap">
+                <span translate="no">{clip.clip_id}</span>
+                {clip.source?.dataset && clip.source.dataset !== 'recorded' ? (
+                  <Badge className="ml-2" translate="no">
+                    {clip.source.dataset}
+                  </Badge>
+                ) : clip.source?.data_origin === 'synthetic' ? (
+                  <Badge className="ml-2">synthetic</Badge>
+                ) : null}
               </th>
               {columns.map((metric) => (
                 <td
@@ -188,11 +203,16 @@ function ClipTable({ clips }: { clips: ClipReport[] }) {
 function Report({ report }: { report: EvalReport }) {
   const configHashes = report.config_hashes ?? []
   const git = report.git as { commit?: string; dirty?: boolean } | null | undefined
+  const real = report.aggregate.num_clips
+  const synthetic = report.aggregate_synthetic?.num_clips ?? 0
+  const external = Object.entries(report.aggregate_external ?? {})
   return (
     <div className="space-y-6">
       <p className="text-muted text-sm">
-        {report.aggregate.num_clips} clip{report.aggregate.num_clips === 1 ? '' : 's'} · generated{' '}
-        {formatDateTime(report.generated_at)}
+        {plural(real, 'own recording')}
+        {synthetic ? ` · ${plural(synthetic, 'synthetic clip')}` : ''}
+        {external.map(([name, agg]) => ` · ${formatCount(agg.num_clips)} ${name}`).join('')} ·
+        generated {formatDateTime(report.generated_at)}
         {git?.commit ? (
           <>
             {' '}
@@ -223,14 +243,46 @@ function Report({ report }: { report: EvalReport }) {
 
       <section aria-labelledby="aggregate-heading">
         <h2 id="aggregate-heading" className="text-fg mb-3 text-lg font-semibold">
-          Mean across clips
+          Recorded for this project
         </h2>
-        <MetricCards aggregate={report.aggregate} />
+        {real ? (
+          <MetricCards aggregate={report.aggregate} />
+        ) : (
+          <p className="text-muted text-sm">
+            None of this project&rsquo;s recordings is scored yet.
+          </p>
+        )}
         <p className="text-muted mt-2 text-xs">
           Plain per-clip means; a clip without a reference for a family is left out of that family
           rather than counted as zero.
         </p>
       </section>
+
+      {report.aggregate_synthetic ? (
+        <section aria-labelledby="synthetic-heading">
+          <h2 id="synthetic-heading" className="text-fg mb-1 text-lg font-semibold">
+            Synthetic speech
+          </h2>
+          <p className="text-muted mb-3 text-sm">
+            Clips voiced by text-to-speech, scored the same way but reported separately: they are
+            never mixed into the real-recording numbers.
+          </p>
+          <MetricCards aggregate={report.aggregate_synthetic} />
+        </section>
+      ) : null}
+
+      {external.map(([name, agg]) => (
+        <section key={name} aria-labelledby={`set-${name}`}>
+          <h2 id={`set-${name}`} className="text-fg mb-1 text-lg font-semibold" translate="no">
+            {name}
+          </h2>
+          <p className="text-muted mb-3 text-sm">
+            A published corpus, reported on its own. DER without a collar is the figure to compare
+            with that corpus&rsquo;s published results.
+          </p>
+          <MetricCards aggregate={agg} />
+        </section>
+      ))}
 
       <Card>
         <CardHeader

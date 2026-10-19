@@ -68,13 +68,14 @@ def generate_clip_report(
     """One clip's full metric report, as a plain JSON-serializable dict.
 
     Language and speaker identity are matched **by time**: each system segment
-    takes the reference language (``language_spans``) and the true speaker
-    (``turns``) that overlap it the longest. Segments that overlap no reference
+    takes the reference language its stretch contains
+    (:func:`~meeting_assistant.evaluation.references.language_at`) and the true
+    speaker (``turns``) that overlaps it the longest. Segments that overlap no reference
     label (silence, or speech the annotator left out) are not scored, and the
     number scored is reported, so a reference that covers little of a run
     cannot pass unnoticed.
     """
-    from meeting_assistant.evaluation.references import label_at
+    from meeting_assistant.evaluation.references import label_at, language_at
     report: dict[str, Any] = {"clip_id": clip_id}
 
     if hypothesis.transcript_text is not None and reference.transcript_text is not None:
@@ -91,14 +92,21 @@ def generate_clip_report(
         }
 
     if hypothesis.turns is not None and reference.turns is not None:
-        report["diarization"] = diarization_error_rate(reference.turns, hypothesis.turns).as_dict()
+        report["diarization"] = {
+            **diarization_error_rate(reference.turns, hypothesis.turns).as_dict(),
+            # The DISPLACE protocol (no collar, overlapping speech scored), so
+            # the number is comparable with that challenge's published results.
+            "no_collar": diarization_error_rate(
+                reference.turns, hypothesis.turns, collar=0.0
+            ).as_dict(),
+        }
 
     if hypothesis.resolved_segments is not None and reference.language_spans is not None:
         pairs = [
             (truth, segment.get("language"))
             for segment in hypothesis.resolved_segments
-            if (truth := label_at(segment["start"], segment["end"], reference.language_spans,
-                                  "language")) is not None
+            if (truth := language_at(segment["start"], segment["end"],
+                                     reference.language_spans)) is not None
         ]
         report["language_id"] = {
             **classification_metrics(

@@ -16,9 +16,49 @@ project's own design notes for the reasoning): every number must be
 manual step; and **provenance must be explicit** — this project already had
 one incident where a hand-authored 22-segment mock transcript's derived
 outputs sat in an output folder looking exactly like genuine results (see
-`legacy/README.md`). Nothing in `data/eval/` is ever synthetic for the same
-reason: every clip here must be a real recording with a real reference
-someone actually checked.
+`legacy/README.md`). For the same reason, synthetic data is never mixed into
+the reported numbers. Every clip, real or synthetic, has a real reference
+someone actually checked, and the headline results come from real recordings
+only.
+
+### Real recordings and the synthetic set
+
+Some clips are voiced by text-to-speech from the same scripts instead of being
+recorded by people. They are processed with `meeting-assistant batch
+data/audio/<clip_id>.wav --synthetic`, which stamps the run
+`data_origin: synthetic`, and they are labelled exactly like real clips.
+`meeting-assistant eval` scores both, then writes two aggregates:
+`aggregate` (real recordings only: the reported results) and
+`aggregate_synthetic` (the synthetic set, reported separately). Each clip's
+`source.data_origin` says which set it belongs to, and the dashboard tags
+synthetic clips. The paper reports the synthetic set as its own table and
+states how it was generated; the gap between the two sets is itself a result
+(clean generated speech against real people in real rooms).
+
+### External benchmark: DISPLACE 2023 (Hindi-English dev sessions)
+
+`meeting-assistant dataset import-displace <DEVSet_DISPLACE_Corpus>` turns the
+DISPLACE 2023 development set (Baghel et al., Interspeech 2023) into reference
+clips named `displace-<session>`: natural, far-field conversations with 3-4
+speakers, 14.8% overlapping speech, labelled for speaker, language (every few
+words) and words (Hindi in Devanagari, English in Latin). Of its 27 sessions,
+the 24 in Hindi and English are imported (14.2 h; the Kannada- and
+Malayalam-English ones are not), by a rule stated in
+`evaluation/displace.py` and applied identically to every session: both
+languages present, other-language speech at most 1%; annotation tags such as
+`[sil]`, `[laugh]` and `[unkwn]` removed from the transcript (fillers kept);
+silence-only segments not counted as speaker turns. Each clip's `meta.json`
+records the dataset, licence terms and what was left out.
+
+It scores diarization, language ID and ASR on speech this project never saw.
+It has no summaries or action items, so the meeting-intelligence stages are
+scored only on this project's own clips. It is reported as its own set
+(`aggregate_external`), never pooled with the others. Published dev-set
+diarization baselines to compare with (no collar, overlap scored): 31.17% and
+32.57% DER (DISPLACE 2023 paper), and 25.45% for the DISPLACE 2024 baseline
+on the same 2023 data; those cover all 27 sessions, so state that the
+comparison here is on the Hindi-English subset. The terms allow research use
+with citation and forbid redistribution: the audio and labels stay out of git.
 
 ## Dataset composition target
 
@@ -64,9 +104,14 @@ Two design rules shape the protocol:
   Labels attached to "segment 7 of run X" would be tied to how one run cut the
   audio, so a configuration that segments differently (another Whisper model)
   could not be scored against them; and labelling next to the system's own
-  guess biases the annotator towards agreeing with it. Each system segment is
-  matched to the reference label that overlaps it the longest
-  (`evaluation/references.py`), and the number of segments scored is reported.
+  guess biases the annotator towards agreeing with it. Each system segment
+  takes the language its stretch of reference labels contains
+  (`references.language_at`): Code-Mixed when labelled Code-Mixed speech
+  dominates it, or when the lesser of Hindi and English is at least 15% of its
+  labelled time (the detector's own word threshold); otherwise the larger of
+  the two. Taking only the longest-overlapping label would call a segment that
+  holds a genuine switch "Hindi" whenever the labels are finer than the
+  segment, as DISPLACE's are. The number of segments scored is reported.
 - **True speaker identities come from the speaker turns** (`turns.txt`), by the
   same time overlap, so there is no separate identity file to keep in step.
 
@@ -97,8 +142,7 @@ data for, and writes `data/eval/reports/latest.json` — the full per-clip
 breakdown plus a cross-clip aggregate
 (`meeting_assistant.evaluation.report.aggregate_reports`).
 
-A run is eligible only if its manifest says `data_origin: real_audio` and its
-`consistency` block shows every stage on disk was produced under one
+A run is eligible only if its `consistency` block shows every stage on disk was produced under one
 configuration and, if the run was resumed, one clean commit. A batch run can be
 resumed (`--resume`, or `POST /api/runs/{id}/resume`), so its stages may come
 from more than one process; each resume is recorded in the manifest's
@@ -107,7 +151,8 @@ Resuming under a changed output-affecting configuration is refused outright
 unless `--allow-mixed-config` is passed, and such a run is never scored.
 Resuming against a different recording (sha256 mismatch) is always refused.
 Runs passed over are printed with the reason, so a clip silently scored against
-an older run cannot go unnoticed. For reported numbers, run each clip fresh in
+an older run cannot go unnoticed. A synthetic run is eligible too, but only
+for the synthetic aggregate (see above). For reported numbers, run each clip fresh in
 one execution on a clean, committed tree.
 
 ## Metric methodology
@@ -121,7 +166,10 @@ like a total substitution — a scoring artifact, not an ASR failure. So three
 numbers are reported per clip:
 
 - **`WER_raw`** — hypothesis and reference compared as-is. Measures ASR
-  alone, including script differences.
+  alone, including script differences. The hypothesis is always Whisper's own
+  output (`01_transcript.json`), never the normalize stage's romanized rewrite
+  of it, which would score the language model's script conversion as if it
+  were recognition.
 - **`WER_romanized`** — both sides deterministically transliterated to
   ITRANS (`indic_transliteration`) before comparison, removing the script
   mismatch. **Never** computed using this project's own Ollama-based
@@ -141,9 +189,11 @@ regex `\w`, which does not match those Unicode categories, and silently
 deleted them from every Hindi word. See `text_norm.py`'s docstring for the
 full story.
 
-### Diarization: DER with its components, collar 0.25s
+### Diarization: DER with its components, collar 0.25s and no collar
 
-Via `pyannote.metrics`. Reported as confusion / missed detection / false
+Via `pyannote.metrics`. Every clip also carries `diarization.no_collar`: the
+same DER with no collar and overlapping speech scored, the DISPLACE protocol,
+which is the figure to put next to that challenge's published results. Reported as confusion / missed detection / false
 alarm separately, not just the combined rate, so which failure mode
 dominates a clip is visible. Labels are matched by optimal one-to-one mapping
 (the Hungarian algorithm, via `pyannote.metrics` internally), not by name —

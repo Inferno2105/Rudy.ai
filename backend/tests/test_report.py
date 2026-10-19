@@ -78,8 +78,9 @@ def test_language_is_scored_by_time_overlap_not_position():
         ]
     )
     language = generate_clip_report("clip01", hyp, ref)["language_id"]
-    # Segment 2 overlaps Hindi 0.5 s and Code-Mixed 0.5 s: the first longest wins (Hindi).
-    # Segment 4 overlaps no label and is not scored.
+    # Segment 2 holds Hindi 0.5 s and Code-Mixed 0.5 s: Code-Mixed (said English: wrong).
+    # Segment 3 is all Code-Mixed (said Hindi: wrong). Segment 4 overlaps no
+    # label and is not scored.
     assert language["segments_scored"] == 3
     assert language["segments_total"] == 4
     assert language["accuracy"] == 0.3333  # reported to 4 decimals
@@ -141,3 +142,34 @@ def test_aggregate_omits_disagreeing_non_numeric_values():
     ]
     aggregated = aggregate_reports(reports)
     assert aggregated["language_id"]["labels"] is None
+
+
+def test_a_segment_spanning_a_real_switch_is_code_mixed_in_the_reference():
+    """Fine-grained labels (DISPLACE marks language every few words) must not
+    turn a segment holding a genuine switch into "pure Hindi"."""
+    from meeting_assistant.evaluation.references import language_at
+
+    spans = [
+        {"start": 0.0, "end": 3.0, "language": "Hindi"},
+        {"start": 3.0, "end": 4.0, "language": "English"},
+        {"start": 4.0, "end": 10.0, "language": "Hindi"},
+        {"start": 10.0, "end": 10.2, "language": "English"},  # one English word
+    ]
+    assert language_at(0.0, 4.0, spans) == "Code-Mixed"  # English is 25% of it
+    assert language_at(4.0, 10.2, spans) == "Hindi"  # English is 3% of it
+    assert language_at(3.0, 4.0, spans) == "English"
+    assert language_at(20.0, 21.0, spans) is None
+
+
+def test_diarization_also_reports_the_no_collar_der_published_benchmarks_use():
+    turns = [{"start": 0.0, "end": 4.0, "speaker": "A"}, {"start": 4.0, "end": 8.0, "speaker": "B"}]
+    late = [{"start": 0.0, "end": 4.2, "speaker": "x"}, {"start": 4.2, "end": 8.0, "speaker": "y"}]
+
+    diarization = generate_clip_report(
+        "clip01", ClipHypothesis(turns=late), ClipReference(turns=turns)
+    )["diarization"]
+
+    # The 0.2 s boundary miss is forgiven inside the 0.25 s collar, not without it.
+    assert diarization["collar"] == 0.25 and diarization["no_collar"]["collar"] == 0.0
+    assert diarization["no_collar"]["der"] == pytest.approx(0.025, abs=1e-3)
+    assert diarization["der"] < diarization["no_collar"]["der"]

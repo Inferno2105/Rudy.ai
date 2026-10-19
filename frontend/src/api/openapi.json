@@ -2054,6 +2054,30 @@
               }
             ],
             "title": "Config Hash"
+          },
+          "data_origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Origin",
+            "description": "\"real_audio\" or \"synthetic\" (generated speech); absent in older reports"
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset",
+            "description": "The set the clip is reported in: \"recorded\", \"synthetic\", or a published corpus such as displace2023-dev"
           }
         },
         "additionalProperties": true,
@@ -2181,6 +2205,17 @@
               }
             ],
             "title": "Collar"
+          },
+          "no_collar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiarizationMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The same DER with no collar and overlapping speech scored (the DISPLACE protocol), comparable with published results"
           }
         },
         "additionalProperties": true,
@@ -2229,7 +2264,27 @@
             "title": "Clips"
           },
           "aggregate": {
-            "$ref": "#/components/schemas/AggregateReport"
+            "$ref": "#/components/schemas/AggregateReport",
+            "description": "Means over this project's own recordings"
+          },
+          "aggregate_synthetic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AggregateReport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Means over synthetic (generated-speech) clips, reported separately"
+          },
+          "aggregate_external": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AggregateReport"
+            },
+            "type": "object",
+            "title": "Aggregate External",
+            "description": "Means over each published corpus (e.g. displace2023-dev), reported apart"
           }
         },
         "additionalProperties": true,

@@ -94,6 +94,8 @@ def _write_completed_run(runs_dir, source_name):
         "language": "English",
         "text": "good morning everyone",
     }
+    raw_segment = {"start": 0.0, "end": 2.0, "text": "good morning everyone"}
+    write_json(paths.artifact("transcript"), [raw_segment])
     write_json(paths.artifact("tagged"), [tagged_segment])
     summary_artifact = {"summary": "greeting", "highlights": [], "key_decisions": []}
     write_json(paths.artifact("summary"), summary_artifact)
@@ -176,20 +178,43 @@ def test_cmd_eval_passes_over_a_run_with_mixed_configurations(tmp_path, monkeypa
     assert "no eligible run found" in out
 
 
-def test_cmd_eval_passes_over_a_synthetic_run(tmp_path, monkeypatch, capsys):
+def test_cmd_eval_scores_synthetic_runs_apart_from_real_recordings(tmp_path, monkeypatch, capsys):
+    """Generated speech is scored, but never mixed into the real-recording numbers."""
+    from meeting_assistant.io_utils import read_json
+
     monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
     monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    for clip_id in ("clip01", "clip02"):
+        _write_reference_clip(tmp_path / "eval" / "references" / clip_id)
+    _write_completed_run(tmp_path / "runs", "clip01.wav")
+    synthetic = RunManifest.load(_write_completed_run(tmp_path / "runs", "clip02.wav"))
+    synthetic.data_origin = "synthetic"
+    synthetic.save()
 
+    assert cmd_eval(argparse_namespace()) == 0
+    out = capsys.readouterr().out
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+
+    origins = {clip["clip_id"]: clip["source"]["data_origin"] for clip in report["clips"]}
+    assert origins == {"clip01": "real_audio", "clip02": "synthetic"}
+    assert report["aggregate"]["num_clips"] == 1
+    assert report["aggregate_synthetic"]["num_clips"] == 1
+    assert "clip02: scored against run" in out and "(synthetic)" in out
+    assert "1 recorded, 1 synthetic" in out
+
+
+def test_cmd_eval_reports_no_synthetic_aggregate_when_every_clip_is_real(tmp_path, monkeypatch):
+    from meeting_assistant.io_utils import read_json
+
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
     _write_reference_clip(tmp_path / "eval" / "references" / "clip01")
-    run = _write_completed_run(tmp_path / "runs", "clip01.wav")
-    manifest = RunManifest.load(run)
-    manifest.data_origin = "synthetic"
-    manifest.save()
+    _write_completed_run(tmp_path / "runs", "clip01.wav")
 
-    exit_code = cmd_eval(argparse_namespace())
-
-    assert exit_code == 1
-    assert "not 'real_audio'" in capsys.readouterr().out
+    assert cmd_eval(argparse_namespace()) == 0
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+    assert report["aggregate_synthetic"] is None
+    assert report["aggregate"]["num_clips"] == 1
 
 
 def test_cmd_eval_records_which_run_each_clip_was_scored_against(tmp_path, monkeypatch):
@@ -246,3 +271,42 @@ def test_cmd_eval_skips_a_clip_whose_labels_cannot_be_read(tmp_path, monkeypatch
     assert cmd_eval(argparse_namespace()) == 1
     out = capsys.readouterr().out
     assert "[skip] clip01" in out and "dataset check" in out
+
+
+def test_asr_is_scored_on_whispers_output_not_the_romanized_rewrite(tmp_path):
+    """WER_raw measures recognition alone: the normalize stage's Latin-script
+    rewrite must never stand in for what Whisper heard."""
+    run = _write_completed_run(tmp_path / "runs", "clip01.wav")
+    write_json(run.artifact("transcript"), [{"start": 0.0, "end": 2.0, "text": "सुप्रभात सब"}])
+    write_json(
+        run.artifact("hinglish"),
+        [{"start": 0.0, "end": 2.0, "speaker": "SPEAKER_00", "language": "Hindi",
+          "text": "suprabhat sab"}],
+    )
+
+    hypothesis = _load_clip_hypothesis(run)
+
+    assert hypothesis.transcript_text == "सुप्रभात सब"
+    assert hypothesis.resolved_segments[0]["text"] == "suprabhat sab"  # language, speakers
+
+
+def test_cmd_eval_reports_a_published_corpus_as_its_own_set(tmp_path, monkeypatch, capsys):
+    from meeting_assistant.io_utils import read_json
+
+    monkeypatch.setattr(config, "EVAL_DIR", tmp_path / "eval")
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "runs")
+    _write_reference_clip(tmp_path / "eval" / "references" / "clip01")
+    external = tmp_path / "eval" / "references" / "displace-x001"
+    _write_reference_clip(external)
+    write_json(external / "meta.json", {"dataset": "displace2023-dev", "speakers": 1})
+    _write_completed_run(tmp_path / "runs", "clip01.wav")
+    _write_completed_run(tmp_path / "runs", "displace-x001.wav")
+
+    assert cmd_eval(argparse_namespace()) == 0
+    report = read_json(tmp_path / "eval" / "reports" / "latest.json")
+
+    sets = {clip["clip_id"]: clip["source"]["dataset"] for clip in report["clips"]}
+    assert sets == {"clip01": "recorded", "displace-x001": "displace2023-dev"}
+    assert report["aggregate"]["num_clips"] == 1
+    assert report["aggregate_external"]["displace2023-dev"]["num_clips"] == 1
+    assert "1 recorded, 0 synthetic, 1 displace2023-dev" in capsys.readouterr().out

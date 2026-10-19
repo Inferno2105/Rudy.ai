@@ -37,6 +37,8 @@ _OVERLAP_SLACK_SEC = 0.05
 
 ITEMS = ("audio", "transcript", "turns", "languages", "summary", "actions", "meta")
 OK, MISSING, PROBLEM = "ok", "--", "ERR"
+# A label a published corpus does not have (DISPLACE has no summaries).
+NOT_APPLICABLE = "n/a"
 
 
 def references_dir() -> Path:
@@ -148,7 +150,7 @@ class ClipCheck:
 
     @property
     def complete(self) -> bool:
-        return all(value == OK for value in self.status.values())
+        return all(value in (OK, NOT_APPLICABLE) for value in self.status.values())
 
 
 def _fmt(seconds: float) -> str:
@@ -182,6 +184,14 @@ def _coverage(spans: list[dict[str, Any]], within: list[dict[str, Any]]) -> floa
 def check_clip(folder: Path) -> ClipCheck:
     """Parse and cross-check every label of one clip."""
     check = ClipCheck(clip_id=folder.name)
+    # An external corpus (meta.json "dataset") is checked for what it has; its
+    # labels are fixed by its publisher, so advice on writing them is moot.
+    try:
+        external = bool(read_meta(folder).get("dataset"))
+    except LabelError:
+        external = False
+    if external:
+        check.status["summary"] = check.status["actions"] = NOT_APPLICABLE
 
     def run(item: str, fn) -> Any:
         try:
@@ -211,7 +221,7 @@ def check_clip(folder: Path) -> ClipCheck:
     transcript = run("transcript", lambda: read_text_label(folder / "transcript.txt"))
     if transcript:
         check.status["transcript"] = OK
-        if re.search(r"\d", transcript):
+        if re.search(r"\d", transcript) and not external:
             check.warnings.append(
                 "transcript.txt contains digits; write numbers as words, the way they were said"
             )
@@ -233,7 +243,8 @@ def check_clip(folder: Path) -> ClipCheck:
                     "speaker turns cover less than 30% of the recording; is every turn marked?"
                 )
 
-    # Language stretches.
+    # Language stretches. An external corpus labels each speaker's segments,
+    # so two people talking at once overlap in time.
     spans = None
     if (folder / "languages.txt").is_file():
         spans = run("languages", lambda: read_language_spans(folder / "languages.txt"))
@@ -244,6 +255,8 @@ def check_clip(folder: Path) -> ClipCheck:
             before = len(check.errors)
             _check_within(spans, check.duration, "languages.txt", check)
             for previous, current in zip(spans, spans[1:], strict=False):
+                if external:
+                    break
                 if current["start"] < previous["end"] - _OVERLAP_SLACK_SEC:
                     check.errors.append(
                         f"languages.txt: two labels overlap at {_fmt(current['start'])}; "
@@ -317,6 +330,7 @@ def check_clip(folder: Path) -> ClipCheck:
 
 def _meta_problems(meta: dict[str, Any], turns: list[dict[str, Any]] | None) -> list[str]:
     problems = []
+    external = bool(meta.get("dataset"))
     if meta.get("condition") not in CONDITIONS:
         problems.append(f"condition must be one of: {', '.join(CONDITIONS)}")
     speakers = meta.get("speakers")
@@ -328,6 +342,12 @@ def _meta_problems(meta: dict[str, Any], turns: list[dict[str, Any]] | None) -> 
             problems.append(
                 f"speakers says {speakers}, but turns.txt names {labelled} different speakers"
             )
+    if external:
+        # A published corpus: its own consent and recording records apply, but
+        # the terms it is used under must be on file.
+        if not str(meta.get("license") or "").strip():
+            problems.append("license is empty (the terms this corpus is used under)")
+        return problems
     if not str(meta.get("device") or "").strip():
         problems.append("device is empty (the microphone or phone used)")
     try:

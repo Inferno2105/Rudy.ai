@@ -55,6 +55,11 @@ STAGE_OK = "ok"
 STAGE_FAILED = "failed"
 STAGE_SKIPPED = "skipped"
 
+# Where a run's audio came from. "synthetic" covers generated speech
+# (text-to-speech clips) and hand-written transcripts: it is scored only as
+# its own set, never mixed into the results for real recordings.
+DATA_ORIGINS = ("real_audio", "synthetic")
+
 
 @dataclass
 class RunManifest:
@@ -93,6 +98,8 @@ class RunManifest:
         even a run that crashes immediately still leaves a manifest recording
         what was about to happen and under what configuration.
         """
+        if data_origin not in DATA_ORIGINS:
+            raise ValueError(f"data_origin must be one of {DATA_ORIGINS}, not {data_origin!r}")
         manifest = cls(
             run_id=paths.run_id,
             mode=mode,
@@ -246,9 +253,14 @@ class RunManifest:
         same_code = len(owners) == 1 or (len(commits) == 1 and not any_dirty)
         return {"executions": owners, "config": same_config, "code": same_code}
 
-    def evaluation_ineligibility(self) -> str | None:
-        """Why this run must not feed a reported number, or ``None`` if it may."""
-        if self.data_origin != "real_audio":
+    def evaluation_ineligibility(self, *, allow_synthetic: bool = False) -> str | None:
+        """Why this run must not feed a reported number, or ``None`` if it may.
+
+        ``allow_synthetic`` lets a synthetic run through for scoring in its own
+        set (``meeting-assistant eval`` reports it apart from real recordings);
+        the configuration and code checks apply to both sets alike.
+        """
+        if self.data_origin != "real_audio" and not allow_synthetic:
             return f"data_origin is {self.data_origin!r}, not 'real_audio'"
         state = self.consistency()
         if not state["config"]:

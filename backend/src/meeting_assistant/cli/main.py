@@ -294,6 +294,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
         only_stage=args.only,
         skip_stages=tuple(args.skip or ()),
         allow_mixed_config=args.allow_mixed_config,
+        data_origin="synthetic" if args.synthetic else "real_audio",
     )
 
     try:
@@ -328,7 +329,24 @@ def _clip_source(manifest) -> dict:
         "git_commit": git.get("commit"),
         "git_dirty": git.get("dirty"),
         "config_hash": manifest.provenance_block.get("config_hash"),
+        "data_origin": manifest.data_origin,
     }
+
+
+RECORDED_SET = "recorded"
+SYNTHETIC_SET = "synthetic"
+
+
+def _clip_set(clip_dir, data_origin: str) -> str:
+    """Which separately reported set a clip belongs to: a published corpus
+    (its ``meta.json`` names the dataset), the synthetic set, or this project's
+    own recordings. Sets are aggregated apart and never mixed."""
+    from meeting_assistant.evaluation.references import read_meta
+
+    dataset = read_meta(clip_dir).get("dataset")
+    if dataset:
+        return str(dataset)
+    return SYNTHETIC_SET if data_origin != "real_audio" else RECORDED_SET
 
 
 def _load_clip_reference(clip_dir):
@@ -388,12 +406,18 @@ def _load_clip_hypothesis(run):
     from meeting_assistant.io_utils import read_json
     from meeting_assistant.pipeline.stages import resolve_intel_input
 
+    # ASR is scored on Whisper's own output (01_transcript), never on the
+    # romanized rewrite the normalize stage makes of it: WER_raw measures
+    # recognition alone, against a reference in the script that was spoken.
     transcript_text = None
+    if run.has("transcript"):
+        transcript_text = " ".join(
+            s.get("text", "").strip() for s in read_json(run.artifact("transcript"))
+        ).strip()
+    # Language and speaker identity come from the latest segment artifact.
     resolved_segments = None
     try:
-        _, segments = resolve_intel_input(run)
-        transcript_text = " ".join(s.get("text", "") for s in segments)
-        resolved_segments = segments
+        _, resolved_segments = resolve_intel_input(run)
     except ArtifactError:
         pass
 
@@ -447,9 +471,10 @@ def cmd_eval(args: argparse.Namespace) -> int:
     from meeting_assistant.pipeline.manifest import RunManifest
 
     # The newest *eligible* run per recording. A run whose stages came from
-    # mixed configurations or code, or that is not real audio, must never feed
-    # a reported number; why each one was passed over is printed, so a clip
-    # silently scored against an older run cannot go unnoticed.
+    # mixed configurations or code must never feed a reported number; why each
+    # one was passed over is printed, so a clip silently scored against an
+    # older run cannot go unnoticed. Synthetic runs (generated speech) are
+    # scored, but aggregated apart from real recordings, never mixed in.
     runs_by_source = {}
     passed_over: dict[str, list[str]] = {}
     for run in paths_mod.list_runs():  # newest first
@@ -459,7 +484,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         input_name = (manifest.provenance_block.get("input") or {}).get("name")
         if not input_name or input_name in runs_by_source:
             continue
-        reason = manifest.evaluation_ineligibility()
+        reason = manifest.evaluation_ineligibility(allow_synthetic=True)
         if reason is not None:
             passed_over.setdefault(input_name, []).append(f"{run.run_id}: {reason}")
             continue
@@ -482,8 +507,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
             continue
         report = generate_clip_report(clip_id, hypothesis, reference)
         report["source"] = _clip_source(RunManifest.load(run))
+        report["source"]["dataset"] = _clip_set(clip_dir, report["source"]["data_origin"])
         reports.append(report)
-        print(f"  [ ok ] {clip_id}: scored against run {run.run_id}")
+        clip_set = report["source"]["dataset"]
+        label = "" if clip_set == RECORDED_SET else f" ({clip_set})"
+        print(f"  [ ok ] {clip_id}: scored against run {run.run_id}{label}")
 
     if not reports:
         print("\nNo clip had both a labelled reference and a matching run.")
@@ -501,7 +529,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
     config_hashes = sorted({r["source"]["config_hash"] for r in reports} - {None})
     if len(config_hashes) > 1:
         print(f"\n[warn] the scored runs span {len(config_hashes)} configurations: {config_hashes}")
-    aggregated = aggregate_reports(reports)
+    by_set: dict[str, list[dict]] = {}
+    for report in reports:
+        by_set.setdefault(report["source"]["dataset"], []).append(report)
+    real = by_set.pop(RECORDED_SET, [])
+    synthetic = by_set.pop(SYNTHETIC_SET, [])
     output_path = config.EVAL_DIR / "reports" / "latest.json"
     write_json(
         output_path,
@@ -511,11 +543,21 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "config_hashes": config_hashes,
             "annotator_agreement": agreement,
             "clips": reports,
-            "aggregate": aggregated,
+            # This project's own recordings; each other set is reported apart.
+            "aggregate": aggregate_reports(real),
+            "aggregate_synthetic": aggregate_reports(synthetic) if synthetic else None,
+            # Published corpora (meta.json "dataset"), each on its own.
+            "aggregate_external": {
+                name: aggregate_reports(group) for name, group in sorted(by_set.items())
+            },
         },
     )
 
-    print(f"\nScored {len(reports)}/{len(clip_dirs)} clip(s). Report written to {output_path}")
+    external = "".join(f", {len(group)} {name}" for name, group in sorted(by_set.items()))
+    print(
+        f"\nScored {len(reports)}/{len(clip_dirs)} clip(s): {len(real)} recorded, "
+        f"{len(synthetic)} synthetic{external}. Report written to {output_path}"
+    )
     return 0
 
 
@@ -646,6 +688,39 @@ def cmd_openapi(args: argparse.Namespace) -> int:
     return 0
 
 
+def _import_displace(args: argparse.Namespace) -> int:
+    """Turn the DISPLACE 2023 dev set's Hindi-English sessions into reference clips."""
+    from pathlib import Path
+
+    from meeting_assistant.errors import MeetingAssistantError
+    from meeting_assistant.evaluation import dataset, displace
+
+    try:
+        results = displace.import_corpus(
+            Path(args.corpus_dir),
+            dataset.references_dir(),
+            config.AUDIO_DIR,
+            only=set(args.session) if args.session else None,
+        )
+    except MeetingAssistantError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    kept = [r for r in results if r.kept]
+    for r in results:
+        languages = ", ".join(f"{k} {v} min" for k, v in r.languages.items())
+        if r.kept:
+            print(f"  [ ok ] {r.clip_id}: {r.duration_sec / 60:.1f} min, {r.speakers} speakers "
+                  f"({languages}); audio {r.audio}")
+        else:
+            print(f"  [skip] {r.session_id}: {r.reason} ({languages})")
+    hours = sum(r.duration_sec for r in kept) / 3600
+    print(f"\nImported {len(kept)} of {len(results)} sessions ({hours:.1f} h) into "
+          f"{dataset.references_dir()}.")
+    print("Next: `meeting-assistant dataset check`, then process each recording with "
+          "`meeting-assistant batch data/audio/<clip_id>.wav`.")
+    return 0 if kept else 1
+
+
 def cmd_dataset(args: argparse.Namespace) -> int:
     """Create, check and prepare the evaluation dataset's label folders."""
     from meeting_assistant.evaluation import dataset
@@ -674,6 +749,9 @@ def cmd_dataset(args: argparse.Namespace) -> int:
               "file, replace every '?' with Hindi, English or Code-Mixed without looking at "
               "languages.txt, then File > Export > Export Labels... over the same file.")
         return 0
+
+    if args.dataset_cmd == "import-displace":
+        return _import_displace(args)
 
     checks = dataset.check_all(args.clip_id)
     if not checks:
@@ -767,6 +845,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="account that owns the new run in the web UI (default: the only account)",
     )
     batch.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="the audio is generated speech (e.g. text-to-speech), not a recording: the run is "
+        "marked synthetic and scored as a separate set",
+    )
+    batch.add_argument(
         "--allow-mixed-config",
         action="store_true",
         help="with --resume: continue even if the configuration changed since the run's "
@@ -820,6 +904,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="copy a clip's language stretches without labels, for the second annotator",
     )
     blind_parser.add_argument("clip_id")
+    displace_parser = dataset_sub.add_parser(
+        "import-displace",
+        help="import the DISPLACE 2023 dev set's Hindi-English sessions as reference clips",
+    )
+    displace_parser.add_argument("corpus_dir", help="the unzipped DEVSet_DISPLACE_Corpus folder")
+    displace_parser.add_argument(
+        "--session",
+        action="append",
+        metavar="ID",
+        help="import only this session, e.g. B010 (repeatable)",
+    )
     dataset_parser.set_defaults(func=cmd_dataset)
 
     serve = subparsers.add_parser("serve", help="run the HTTP API and web UI")

@@ -46,6 +46,11 @@ class DiarizationMetrics(_Open):
     false_alarm: float | None = None
     total: float | None = None
     collar: float | None = None
+    no_collar: DiarizationMetrics | None = Field(
+        default=None,
+        description="The same DER with no collar and overlapping speech scored "
+        "(the DISPLACE protocol), comparable with published results",
+    )
 
 
 class LanguageIdMetrics(_Open):
@@ -88,6 +93,15 @@ class ClipSource(_Open):
     git_commit: str | None = None
     git_dirty: bool | None = None
     config_hash: str | None = None
+    data_origin: str | None = Field(
+        default=None,
+        description='"real_audio" or "synthetic" (generated speech); absent in older reports',
+    )
+    dataset: str | None = Field(
+        default=None,
+        description='The set the clip is reported in: "recorded", "synthetic", or a '
+        "published corpus such as displace2023-dev",
+    )
 
 
 class MetricFamilies(_Open):
@@ -120,4 +134,14 @@ class EvalReport(_Open):
         "aggregate mixes configurations",
     )
     clips: list[ClipReport]
-    aggregate: AggregateReport
+    aggregate: AggregateReport = Field(
+        description="Means over this project's own recordings"
+    )
+    aggregate_synthetic: AggregateReport | None = Field(
+        default=None,
+        description="Means over synthetic (generated-speech) clips, reported separately",
+    )
+    aggregate_external: dict[str, AggregateReport] = Field(
+        default_factory=dict,
+        description="Means over each published corpus (e.g. displace2023-dev), reported apart",
+    )

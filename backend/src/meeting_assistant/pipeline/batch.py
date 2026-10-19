@@ -56,6 +56,9 @@ class BatchOptions:
     allow_mixed_config: bool = False
     # Account that owns a new run (``accounts.User.uid``); ignored on resume.
     owner: str | None = None
+    # Where a new run's audio came from (``manifest.DATA_ORIGINS``); ignored on
+    # resume. "synthetic" (e.g. text-to-speech clips) is scored as a separate set.
+    data_origin: str = "real_audio"
 
 
 def _validate_stage_names(names: str | Iterable[str]) -> None:
@@ -133,7 +136,9 @@ def _final_status(manifest: RunManifest, selected: list[StageSpec], aborted: boo
     return STATUS_COMPLETED if statuses == {STAGE_OK} else STATUS_PARTIAL
 
 
-def create_batch_run(audio_path: str | Path, *, owner: str | None = None) -> RunPaths:
+def create_batch_run(
+    audio_path: str | Path, *, owner: str | None = None, data_origin: str = "real_audio"
+) -> RunPaths:
     """Create a run directory and its initial manifest, without running anything.
 
     Split out so a caller that must hand back a ``run_id`` before the
@@ -149,7 +154,9 @@ def create_batch_run(audio_path: str | Path, *, owner: str | None = None) -> Run
     if not audio_path.exists():
         raise ArtifactError(f"Audio file not found: {audio_path}")
     paths = new_run("batch", audio_path)
-    RunManifest.start(paths, mode="batch", audio_path=str(audio_path), owner=owner)
+    RunManifest.start(
+        paths, mode="batch", audio_path=str(audio_path), data_origin=data_origin, owner=owner
+    )
     return paths
 
 
@@ -201,7 +208,7 @@ def run_batch(audio_path: str | Path | None, opts: BatchOptions | None = None) -
     else:
         if audio_path is None:
             raise ArtifactError("Audio file not found: None")
-        paths = create_batch_run(audio_path, owner=opts.owner)
+        paths = create_batch_run(audio_path, owner=opts.owner, data_origin=opts.data_origin)
         manifest = RunManifest.load(paths)
 
     log.info("Run %s (%s)", paths.run_id, "resumed" if opts.resume_run_id else "started")
