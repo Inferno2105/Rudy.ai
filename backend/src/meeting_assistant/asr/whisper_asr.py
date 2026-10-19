@@ -102,6 +102,7 @@ def transcribe_audio(
     initial_prompt: str | None = None,
     condition_on_previous_text: bool | None = None,
     multilingual: bool | None = None,
+    batch_size: int | None = None,
 ) -> TranscriptionResult:
     """Transcribe one audio file into timestamped segments.
 
@@ -124,6 +125,9 @@ def transcribe_audio(
             options; ``None`` takes ``config.WHISPER_CONDITION_ON_PREVIOUS`` /
             ``config.WHISPER_MULTILINGUAL`` (see ``config.py`` for why they
             matter on long code-mixed conversations).
+        batch_size: above 1, decode that many windows at once through
+            faster-whisper's ``BatchedInferencePipeline``; ``None`` takes
+            ``config.WHISPER_BATCH_SIZE``.
 
     Returns:
         A :class:`TranscriptionResult`. Empty-text segments are dropped —
@@ -135,19 +139,27 @@ def transcribe_audio(
     log.info("Transcribing %s", audio_path)
     started = time.perf_counter()
 
-    segments_iter, info = model.transcribe(
-        str(audio_path),
-        language=language,
-        beam_size=beam_size,
-        vad_filter=vad_filter,
-        initial_prompt=initial_prompt,
-        condition_on_previous_text=(
+    options = {
+        "language": language,
+        "beam_size": beam_size,
+        "vad_filter": vad_filter,
+        "initial_prompt": initial_prompt,
+        "condition_on_previous_text": (
             config.WHISPER_CONDITION_ON_PREVIOUS
             if condition_on_previous_text is None
             else condition_on_previous_text
         ),
-        multilingual=config.WHISPER_MULTILINGUAL if multilingual is None else multilingual,
-    )
+        "multilingual": config.WHISPER_MULTILINGUAL if multilingual is None else multilingual,
+    }
+    batch = config.WHISPER_BATCH_SIZE if batch_size is None else batch_size
+    if batch > 1:
+        from faster_whisper import BatchedInferencePipeline
+
+        segments_iter, info = BatchedInferencePipeline(model=model).transcribe(
+            str(audio_path), batch_size=batch, **options
+        )
+    else:
+        segments_iter, info = model.transcribe(str(audio_path), **options)
 
     segments: list[dict[str, Any]] = []
     for segment in segments_iter:

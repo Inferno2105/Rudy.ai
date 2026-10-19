@@ -89,3 +89,31 @@ def test_decoding_options_change_the_config_hash_only_off_their_defaults(monkeyp
     with_multilingual = provenance.config_hash()
     monkeypatch.setattr(config, "WHISPER_CONDITION_ON_PREVIOUS", False)
     assert len({baseline, with_multilingual, provenance.config_hash()}) == 3
+
+
+def test_a_batch_size_above_one_decodes_through_the_batched_pipeline(monkeypatch):
+    import faster_whisper
+
+    from meeting_assistant import config
+    from meeting_assistant.asr.whisper_asr import transcribe_audio
+
+    calls = {}
+
+    class FakeBatched:
+        def __init__(self, model):
+            calls["model"] = model
+
+        def transcribe(self, path, **kwargs):
+            calls["kwargs"] = kwargs
+            return _FakeModel().transcribe(path)
+
+    monkeypatch.setattr(faster_whisper, "BatchedInferencePipeline", FakeBatched)
+    model = _FakeModel()
+    monkeypatch.setattr(config, "WHISPER_BATCH_SIZE", 8)
+
+    result = transcribe_audio(model, "a.wav")
+
+    assert calls["model"] is model and calls["kwargs"]["batch_size"] == 8
+    assert model.kwargs is None  # the sequential path was not used
+    assert [s["text"] for s in result.segments] == ["hello"]
+    assert config.output_affecting_settings()["whisper_batch_size"] == "8"

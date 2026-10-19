@@ -95,6 +95,10 @@ def _flag(name: str, default: bool) -> bool:
 #   script (code-switching).
 WHISPER_CONDITION_ON_PREVIOUS: bool = _flag("WHISPER_CONDITION_ON_PREVIOUS", True)
 WHISPER_MULTILINGUAL: bool = _flag("WHISPER_MULTILINGUAL", False)
+# Above 1, decode that many 30 s windows at once (faster-whisper's
+# BatchedInferencePipeline, VAD-chunked, no conditioning between windows):
+# several times faster on a GPU. 1 is ordinary sequential decoding.
+WHISPER_BATCH_SIZE: int = max(1, int(os.environ.get("WHISPER_BATCH_SIZE", "1") or 1))
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +261,7 @@ def output_affecting_settings() -> dict[str, str]:
         # defaults, so earlier runs keep their hash.
         **({"whisper_condition_on_previous": "false"} if not WHISPER_CONDITION_ON_PREVIOUS else {}),
         **({"whisper_multilingual": "true"} if WHISPER_MULTILINGUAL else {}),
+        **({"whisper_batch_size": str(WHISPER_BATCH_SIZE)} if WHISPER_BATCH_SIZE > 1 else {}),
     }
 
 
